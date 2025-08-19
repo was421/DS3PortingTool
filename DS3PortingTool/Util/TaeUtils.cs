@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using SoulsAssetPipeline.Animation;
+using SoulsFormats;
 
 namespace DS3PortingTool.Util;
 public static class TaeUtils
@@ -168,6 +168,32 @@ public static class TaeUtils
 				byte[] newBytes = BitConverter.GetBytes(soundId);
 				Array.Copy(newBytes, 0, paramBytes, 4, 4);
 			}
+		}
+
+		return paramBytes;
+	}
+	
+	/// <summary>
+	/// Change the first three digits of the LockOnParamID parameter of this event to match the new character ID
+	/// </summary>
+	public static byte[] ChangeLockOnParamId(this TAE.Event ev, bool isBigEndian, Options op)
+	{
+		byte[] paramBytes = ev.GetParameterBytes(isBigEndian);
+		if (op.ChangeLockCamParamIds)
+		{
+			byte[] lockCamParamIdBytes = new byte[4];
+			Array.Copy(paramBytes, lockCamParamIdBytes, 4);
+			if (isBigEndian)
+			{
+				Array.Reverse(lockCamParamIdBytes);
+			}
+			
+			int lockCamParamId = BitConverter.ToInt32(lockCamParamIdBytes, 0);
+			string lockCamParamIdString = Convert.ToString(lockCamParamId);
+			lockCamParamIdString = op.LockCamParamId[..^1] + lockCamParamIdString.Substring(op.IdLength - 1);
+			lockCamParamId = Int32.Parse(lockCamParamIdString);
+			byte[] newBytes = BitConverter.GetBytes(lockCamParamId);
+			Array.Copy(newBytes, 0, paramBytes, 0, 4);
 		}
 
 		return paramBytes;

@@ -9,7 +9,8 @@ public class Options
     public enum AssetType
     {
         Character,
-        Object
+        Object,
+        MapPiece
     }
     
     /// <summary>
@@ -19,19 +20,35 @@ public class Options
     /// <summary>
     /// Name(s) of the source dcx file(s) without the path.
     /// </summary>
-    public string[] SourceFileNames { get; }
+    public string[] ContentSourceFileNames { get; }
     /// <summary>
     /// The binder(s) where data being ported is sourced from.
     /// </summary>
-    public IBinder[] SourceBnds { get; }
+    public ISoulsFile[] ContentSourceFiles { get; }
+    /// <summary>
+    /// Name(s) of the source dcx file(s) without the path.
+    /// </summary>
+    public string[] TextureSourceFileNames { get; }
+    /// <summary>
+    /// The binder(s) where data being ported is sourced from.
+    /// </summary>
+    public ISoulsFile[] TextureSourceFiles { get; }
     /// <summary>
     /// Name of the source dcx file without the path currently being ported.
     /// </summary>
-    public string CurrentSourceFileName { get; set; }
+    public string CurrentContentSourceFileName { get; set; }
     /// <summary>
     /// The binder currently being ported.
     /// </summary>
-    public IBinder CurrentSourceBnd { get; set; }
+    public ISoulsFile CurrentContentSourceFile { get; set; }
+    /// <summary>
+    /// Name of the source dcx file without the path currently being ported.
+    /// </summary>
+    public string CurrentTextureSourceFileName { get; set; }
+    /// <summary>
+    /// The binder currently being ported.
+    /// </summary>
+    public ISoulsFile CurrentTextureSourceFile { get; set; }
     /// <summary>
     /// What type of asset the source bnds are for.
     /// </summary>
@@ -53,6 +70,10 @@ public class Options
     /// </summary>
     public string SoundId { get; }
     /// <summary>
+    /// The id that lock cam param events will use.
+    /// </summary>
+    public string LockCamParamId { get; }
+    /// <summary>
     /// The length of the source and ported id.
     /// </summary>
     public int IdLength { get; }
@@ -69,6 +90,15 @@ public class Options
     /// </summary>
     public bool ChangeSoundIds { get; }
     /// <summary>
+    /// Flag setting which if true means that lock cam param ids will be changed to match new character id.
+    /// </summary>
+    public bool ChangeLockCamParamIds { get; }
+    /// <summary>
+    /// EXPERIMENTAL, may give weird results. Guesses which DS3 material would best fit a mesh using buffer layout,
+    /// and amounts of texture types.
+    /// </summary>
+    public bool UseBestFitMaterials { get; }
+    /// <summary>
     /// List of animation offsets which are excluded when porting an anibnd.
     /// </summary>
     public List<int> ExcludedAnimOffsets { get; }
@@ -79,61 +109,70 @@ public class Options
         SourceId = "";
         PortedId = "";
         SoundId = "";
+        LockCamParamId = "";
         ExcludedAnimOffsets = new List<int>();
         
-        string[] sourceFiles = Array.FindAll(args, x => File.Exists(x) && 
-                                                   Path.GetFileName(x).Contains(".dcx"));
-        if (sourceFiles.Length == 0)
+        string[] contentSourceFiles = Array.FindAll(args, x => File.Exists(x) && 
+                                                   Path.GetFileName(x).Contains("bnd.dcx") && !Path.GetFileName(x).Contains("texbnd.dcx"));
+        
+        if (contentSourceFiles.Length == 0)
         {
             throw new ArgumentException("No path to a source binder found in arguments.");
         }
+        
+        string[] textureSourceFiles = Array.FindAll(args, x => File.Exists(x) &&
+                                                               (Path.GetFileName(x).Contains("tpf.dcx") ||
+                                                                Path.GetFileName(x).Contains("texbnd.dcx")));
+        
+        ContentSourceFileNames = new string[contentSourceFiles.Length];
+        ContentSourceFiles = new ISoulsFile[contentSourceFiles.Length];
+        CurrentContentSourceFileName = ContentSourceFileNames[0];
+        CurrentContentSourceFile = ContentSourceFiles[0];
+        
+        TextureSourceFileNames = new string[textureSourceFiles.Length];
+        TextureSourceFiles = new ISoulsFile[textureSourceFiles.Length];
+        CurrentTextureSourceFileName = TextureSourceFileNames[0];
+        CurrentTextureSourceFile = TextureSourceFiles[0];
+        
 
-        SourceFileNames = new string[sourceFiles.Length];
-        SourceBnds = new IBinder[sourceFiles.Length];
-
-        CurrentSourceFileName = SourceFileNames[0];
-        CurrentSourceBnd = SourceBnds[0];
-
-        for (int i = 0; i < sourceFiles.Length; i++)
+        for (int i = 0; i < contentSourceFiles.Length; i++)
         {
-            SourceFileNames[i] = Path.GetFileName(sourceFiles[i]);
+            ContentSourceFileNames[i] = Path.GetFileName(contentSourceFiles[i]);
             
-            if (BND4.Is(sourceFiles[i]))
+            if (BND4.Is(contentSourceFiles[i]))
             {
-                SourceBnds[i] = BND4.Read(sourceFiles[i]);
+                ContentSourceFiles[i] = BND4.Read(contentSourceFiles[i]);
             }
-            else
+            else if (BND3.Is(contentSourceFiles[i]))
             {
-                SourceBnds[i] = BND3.Read(sourceFiles[i]);
+                ContentSourceFiles[i] = BND3.Read(contentSourceFiles[i]);
             }
         }
         
-        if (SourceFileNames[0].EndsWith("chrbnd.dcx") || SourceFileNames[0].EndsWith("anibnd.dcx"))
+        for (int i = 0; i < textureSourceFiles.Length; i++)
         {
-            SourceBndsType = AssetType.Character;
-            IdLength = 4;
-            SourceId = "1000";
-            PortedId = "1000";
+            TextureSourceFileNames[i] = Path.GetFileName(textureSourceFiles[i]);
+            
+            if (TPF.Is(textureSourceFiles[i]))
+            {
+                TextureSourceFiles[i] = TPF.Read(textureSourceFiles[i]);
+            }
+            else if (BND4.Is(textureSourceFiles[i]))
+            {
+                TextureSourceFiles[i] = BND4.Read(textureSourceFiles[i]);
+            }
+            else if (BND3.Is(textureSourceFiles[i]))
+            {
+                TextureSourceFiles[i] = BND3.Read(textureSourceFiles[i]);
+            }
         }
-        else if (SourceFileNames[0].EndsWith("objbnd.dcx") || SourceFileNames[0].EndsWith("geombnd.dcx") ||
-                 SourceFileNames[0].EndsWith("geomhkxbnd.dcx"))
-        {
-            SourceBndsType = AssetType.Object;
-            IdLength = 6;
-            SourceId = "100000";
-            PortedId = "100000";
-        }
-        else
-        {
-            throw new ArgumentException("One or more bnds are not of a supported type.");
-        }
-
-        Game = new(SourceBnds[0]);
+        
+        Game = new((IBinder)ContentSourceFiles.First(x => x is BND3 or BND4));
 
         string[] args1 = args;
         List<int> flagIndices = args.Where(x => x.Length == 2 && x.Substring(0, 1).Equals("-"))
             .Select(x => Array.IndexOf(args, x))
-            .Where(x => sourceFiles.All(y => x != Array.IndexOf(args1, y))).ToList();
+            .Where(x => contentSourceFiles.All(y => x != Array.IndexOf(args1, y))).ToList();
 		
         if (!flagIndices.Any())
         {
@@ -148,11 +187,59 @@ public class Options
             }
         }
         
-        if (Path.GetFileName(sourceFiles[0]).Substring(1, IdLength).All(char.IsDigit))
+        bool isObject = false;
+        
+        if (ContentSourceFileNames.Any(x => x.EndsWith("geombnd.dcx")))
         {
-            SourceId = Path.GetFileName(sourceFiles[0]).Substring(1, IdLength);
+            if (args.Any(x => x == "-obj"))
+            {
+                isObject = true;
+            }
+            else if (args.All(x => x != "-map"))
+            {
+                Console.Write("A geombnd was found in the input. By default it will port to a map piece.\nShould it port to an object instead? (y/n): ");
+                string? answer = Console.ReadLine();
+                while (answer == null || (answer != "y" && answer != "n"))
+                {
+                    answer = Console.ReadLine();
+                }
+
+                isObject = answer == "y";
+            }
+        }
+        
+        if (ContentSourceFileNames.Any(x => x.EndsWith("chrbnd.dcx")) || ContentSourceFileNames.Any(x => x.EndsWith("anibnd.dcx")))
+        {
+            SourceBndsType = AssetType.Character;
+            IdLength = 4;
+            SourceId = "1000";
+            PortedId = "1000";
+        }
+        else if (ContentSourceFileNames.Any(x => x.EndsWith("objbnd.dcx")) || ContentSourceFileNames.Any(x => x.EndsWith("geombnd.dcx") && isObject))
+        {
+            SourceBndsType = AssetType.Object;
+            IdLength = 6;
+            SourceId = "100000";
+            PortedId = "100000";
+        }
+        else if (ContentSourceFileNames.Any(x => x.EndsWith("mapbnd.dcx")) || ContentSourceFileNames.Any(x => x.EndsWith("geombnd.dcx") && !isObject))
+        {
+            SourceBndsType = AssetType.MapPiece;
+            IdLength = 14;
+            SourceId = "10000000000000";
+            PortedId = "10000000000000";
+        }
+        else
+        {
+            throw new ArgumentException("One or more bnds are not of a supported type.");
+        }
+        
+        if (Path.GetFileName(contentSourceFiles[0]).Substring(1, IdLength).All(char.IsDigit))
+        {
+            SourceId = Path.GetFileName(contentSourceFiles[0]).Substring(1, IdLength);
             PortedId = SourceId;
             SoundId = "";
+            LockCamParamId = "";
         }
 
         foreach (int i in flagIndices)
@@ -182,6 +269,11 @@ public class Options
                     SoundId = PortedId;
                     ChangeSoundIds = true;
                 }
+                if (LockCamParamId.Equals(""))
+                {
+                    LockCamParamId = PortedId;
+                    ChangeLockCamParamIds = true;
+                }
             }
             else if (args[i].Equals("-o"))
             {
@@ -201,7 +293,7 @@ public class Options
                 {
                     ChangeSoundIds = false;
                 }
-                else if (flagIndices.Contains(i + 1) || sourceFiles.Any(x => i + 1 == Array.IndexOf(args, x)))
+                else if (flagIndices.Contains(i + 1) || contentSourceFiles.Any(x => i + 1 == Array.IndexOf(args, x)))
                 {
                     ChangeSoundIds = false;
                 }
@@ -215,7 +307,31 @@ public class Options
                     ChangeSoundIds = true;
                 }
             }
-            else if (!args[i].Equals("-x"))
+            else if (args[i].Equals("-l"))
+            {
+                if (args.Length <= i + 1)
+                {
+                    ChangeLockCamParamIds = false;
+                }
+                else if (flagIndices.Contains(i + 1) || contentSourceFiles.Any(x => i + 1 == Array.IndexOf(args, x)))
+                {
+                    ChangeLockCamParamIds = false;
+                }
+                else if (args[i + 1].Length != IdLength || !args[i + 1].All(char.IsDigit))
+                {
+                    throw new ArgumentException($"The id after flag '-l' must be a {IdLength} digit number.");
+                }
+                else if (args[i + 1].Length == IdLength || args[i + 1].All(char.IsDigit))
+                {
+                    LockCamParamId = args[i + 1];
+                    ChangeLockCamParamIds = true;
+                }
+            }
+            else if (args[i].Equals("-m"))
+            {
+                UseBestFitMaterials = true;
+            }
+            else if (!(args[i].Equals("-x") || args[i].Equals("-obj") || args[i].Equals("-map")))
             {
                 throw new ArgumentException($"Unknown flag: {args[i]}");
             }

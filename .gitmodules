@@ -1,0 +1,6 @@
+[submodule "SoulsFormatsNEXT"]
+	path = SoulsFormatsNEXT
+	url = https://github.com/soulsmods/SoulsFormatsNEXT.git
+[submodule "FLVERMaterialHelper"]
+	path = FLVERMaterialHelper
+	url = https://github.com/GompDS/FLVERMaterialHelper.git

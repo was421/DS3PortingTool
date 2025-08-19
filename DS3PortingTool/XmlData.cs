@@ -1,14 +1,17 @@
 using System.Xml.Linq;
-using SoulsAssetPipeline.FLVERImporting;
+using FLVERMaterialHelper.MatShaderInfoBank;
+using SoulsFormats;
 
 namespace DS3PortingTool;
 
 public class XmlData
 {
+	public Dictionary<string,MATBIN> MatBins { get; }
+	
 	/// <summary>
 	/// Contains templates for creating new materials.
 	/// </summary>
-	public FLVER2MaterialInfoBank MaterialInfoBank { get; }
+	public MatShaderInfoBank MaterialInfoBank { get; }
 
 	/// <summary>
 	/// Old animations ids paired with replacement ids.
@@ -55,14 +58,58 @@ public class XmlData
 		    case Options.AssetType.Object:
 			    xmlDirectory = $"{op.Cwd}Res\\ObjectXML\\";
 			    break;
+		    case Options.AssetType.MapPiece:
+			    xmlDirectory = $"{op.Cwd}Res\\ObjectXML\\";
+			    break;
 		    default:
 			    throw new ArgumentException("Unsupported bnd type.");
 	    }
 	    
-	    MaterialInfoBank = FLVER2MaterialInfoBank.ReadFromXML($"{op.Cwd}\\Res\\BankDS3.xml");
+	    MatShaderInfoBankDS3.ReadXml($"{op.Cwd}\\Res\\MatShaderInfoBank_ds3.xml", out MatShaderInfoBankDS3? infoBank);
+	    if (infoBank != null) MaterialInfoBank = infoBank;
 	    ExcludedEvents = GetXmlSet(XElement.Load($"{xmlDirectory}ExcludedEvents.xml"), gameName);
 	    ExcludedJumpTables = GetXmlSet(XElement.Load($"{xmlDirectory}ExcludedJumpTables.xml"), gameName);
 	    ExcludedRumbleCams = GetXmlSet(XElement.Load($"{xmlDirectory}ExcludedRumbleCams.xml"), gameName);
+
+	    if (op.Game.Type == Game.GameTypes.EldenRing)
+	    {
+		    MatBins = new Dictionary<string, MATBIN>();
+		    
+		    BND4 allMaterialBnd = BND4.Read($"{op.Cwd}\\Res\\MATBIN\\{gameName}\\allmaterial.matbinbnd.dcx");
+		    foreach (BinderFile bf in allMaterialBnd.Files)
+		    {
+			    if (MATBIN.Is(bf.Bytes))
+			    {
+				    MatBins.TryAdd(Path.ChangeExtension(
+						    bf.Name.Replace("INTERROOT_win64\\", "").Replace("matbin","mtd").ToLower(), "matxml"),
+					    MATBIN.Read(bf.Bytes));
+			    }
+		    }
+		    
+		    BND4 allMaterialDLC01Bnd = BND4.Read($"{op.Cwd}\\Res\\MATBIN\\{gameName}\\allmaterial_dlc01.matbinbnd.dcx");
+		    foreach (BinderFile bf in allMaterialDLC01Bnd.Files)
+		    {
+			    if (MATBIN.Is(bf.Bytes))
+			    {
+				    MatBins.TryAdd(Path.ChangeExtension(
+						    bf.Name.Replace("INTERROOT_win64\\", "").Replace("matbin","mtd").ToLower(), "matxml"),
+					    MATBIN.Read(bf.Bytes));
+			    }
+		    }
+		    
+		    BND4 allMaterialDLC02Bnd = BND4.Read($"{op.Cwd}\\Res\\MATBIN\\{gameName}\\allmaterial_dlc02.matbinbnd.dcx");
+		    foreach (BinderFile bf in allMaterialDLC02Bnd.Files)
+		    {
+			    if (MATBIN.Is(bf.Bytes))
+			    {
+				    MatBins.TryAdd(Path.ChangeExtension(
+						    bf.Name.Replace("INTERROOT_win64\\", "").Replace("matbin","mtd").ToLower(), "matxml"),
+					    MATBIN.Read(bf.Bytes));
+			    }
+		    }
+		    
+		    Console.WriteLine();
+	    }
 	}
     
 	/// <summary>

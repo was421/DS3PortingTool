@@ -19,7 +19,9 @@ public class Game
         
         Sekiro,
         
-        EldenRing
+        EldenRing,
+        
+        Nightrein
     }
 
     /// <summary>
@@ -67,6 +69,12 @@ public class Game
         {
             Type = GameTypes.EldenRing;
             Name = "EldenRing";
+            Offset = 1000000;
+        }
+        else if (bnd.Files.Any(x => x.Name.Contains(@"W:\CL\data\Target\INTERROOT_win64")))
+        {
+            Type = GameTypes.Nightrein;
+            Name = "Nightrein";
             Offset = 1000000;
         }
         else

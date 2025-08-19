@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text.RegularExpressions;
-using SoulsAssetPipeline.FLVERImporting;
+using FLVERMaterialHelper.MatShaderInfoBank;
+using FLVERMaterialHelper.Shaders;
 using SoulsFormats;
 
 namespace DS3PortingTool.Util;
@@ -10,7 +11,7 @@ public static class FlverUtils
     /// <summary>
     /// Takes a non-native DS3 material and returns a new material with as close a mtd type as possible.
     /// </summary>
-    public static FLVER2.Material ToDummyDs3Material(this FLVER2.Material oldMat, FLVER2MaterialInfoBank materialInfoBank, Options op) 
+    public static FLVER2.Material ToDummyDs3Material(this FLVER2.Material oldMat, TextureInfo textureInfo, MatShaderInfoBank infoBank, Options op) 
     {
         FLVER2.Material newMat = new()
         {
@@ -18,12 +19,12 @@ public static class FlverUtils
             MTD = op.SourceBndsType == Options.AssetType.Character ? GetDs3Mtd_cARSN(oldMat.MTD) : GetDs3Mtd_mARSN(oldMat.MTD)
         };
         
-        FLVER2MaterialInfoBank.MaterialDef matDef = materialInfoBank.MaterialDefs.Values
-	        .First(y => y.MTD.Equals($"{Path.GetFileName(newMat.MTD)}".ToLower()));
+        MatShaderInfoBank.MaterialInfo matDef = infoBank.MaterialInformation
+            .First(y => y.MatName.Equals($"{Path.GetFileName(newMat.MTD)}".ToLower()));
 
-        newMat.Textures = matDef.TextureChannels.Values.Select(texName =>
+        newMat.Textures = matDef.TextureChannels.Select(texChannel =>
         {
-            FLVER2.Texture tex = new() { Type = texName, Path = GetDummyTexPath(texName) };
+            FLVER2.Texture tex = new() { ParamName = texChannel.ParamName, Path = GetDummyTexPath(texChannel.ParamName) };
             return tex;
         }).ToList();
 
@@ -33,31 +34,115 @@ public static class FlverUtils
     /// <summary>
     /// Takes a non-native DS3 material and turns it into a DS3 material with original textures.
     /// </summary>
-    public static FLVER2.Material ToDs3Material(this FLVER2.Material oldMat, FLVER2MaterialInfoBank materialInfoBank, Options op) 
+    public static FLVER2.Material ToDs3Material(this FLVER2.Material oldMat, TextureInfo texInfo, FLVER2 oldFlver, MatShaderInfoBank infoBank,
+        Dictionary<string,MATBIN> matbins, Options op)
     {
-	    FLVER2.Material newMat = new()
+        FLVER2.Material newMat = new()
 	    {
-		    Name = oldMat.Name,
-		    MTD = op.SourceBndsType == Options.AssetType.Character ? GetDs3Mtd_cARSN(oldMat.MTD) : GetDs3Mtd_mARSN(oldMat.MTD)
+		    Name = oldMat.Name
 	    };
         
-	    FLVER2MaterialInfoBank.MaterialDef matDef = materialInfoBank.MaterialDefs.Values
-		    .First(y => y.MTD.Equals($"{Path.GetFileName(newMat.MTD)}".ToLower()));
-	    
-	    
-	    for (int i = 0; i < matDef.TextureChannels.Values.Count; i++)
+        string mtdName = GetBestFitMTD(oldMat, oldFlver, infoBank, texInfo, op);
+        if (mtdName.Length > 0)
         {
-            string texType = matDef.TextureChannels.ElementAt(i).Value;
-		    FLVER2.Texture tex = new() { Type = texType, Path = GetDummyTexPath(texType) };
-            FLVER2.Texture? matchingTex = oldMat.Textures.FirstOrDefault(x => x.Type.Equals(texType));
-            if (matchingTex == null) continue;
-            Match texContainer = Regex.Match(matchingTex.Path, "c[0-9]{4}", RegexOptions.IgnoreCase);
-            if (!texContainer.Success) continue;
-            tex.Path = $"N:\\FDP\\data\\Model\\chr\\c{op.PortedId}\\tex\\{Path.GetFileName(matchingTex.Path)}";
-            newMat.Textures.Add(tex);
+            newMat.MTD = op.SourceBndsType == Options.AssetType.Character
+                ? newMat.MTD = $"N:\\FDP\\data\\Material\\mtd\\character\\{mtdName}"
+                : newMat.MTD = $"N:\\FDP\\data\\Material\\mtd\\map\\{mtdName}";
+            
+            MatShaderInfoBank.MaterialInfo matDef = infoBank.MaterialInformation
+            .First(y => y.MatName.Equals($"{Path.GetFileName(newMat.MTD.ToLower())}"));
+            
+            bool isMetallicPBR = false;
+            for (int i = 0; i < matDef.TextureChannels.Count; i++)
+            {
+                string texType = matDef.TextureChannels.ElementAt(i).ParamName;
+                FLVER2.Texture tex = new() { ParamName = texType };
+                Dictionary<string,FLVER2.Texture>? associatedTextures = texInfo.GetTextureType( 
+                    tex.ParamName, out bool newIsMetallicPBR);
+                if (associatedTextures != null && associatedTextures.Count > 0)
+                {
+                    if (newIsMetallicPBR && !isMetallicPBR) isMetallicPBR = newIsMetallicPBR;
+                    KeyValuePair<string, FLVER2.Texture> texKvp = associatedTextures.First();
+                    associatedTextures.Remove(texKvp.Key);
+                    tex.TilingScale = texKvp.Value.TilingScale;
+                    tex.TilingTypeU = texKvp.Value.TilingTypeU;
+                    tex.TilingTypeV = texKvp.Value.TilingTypeV;
+                    string texName = Path.GetFileName(texKvp.Value.Path).Replace("_m.tif", "_r.tif");
+                    //if (texName.Length == 0 && texInfo.Material != null)
+                    //{
+                    //    texName = Path.GetFileName(texInfo.Material.Samplers.First(x => x.Type == texKvp.Key).Path);
+                    //}
+                    switch (op.SourceBndsType)
+                    {
+                        case Options.AssetType.Character:
+                            tex.Path = $"N:\\FDP\\data\\Model\\chr\\c{op.PortedId}\tex\\" + texName;
+                            break;
+                        case Options.AssetType.Object:
+                            tex.Path = $"N:\\FDP\\data\\Model\\obj\\o{op.PortedId[..2]}\\o{op.PortedId}\\tex\\" + texName;
+                            break;
+                        case Options.AssetType.MapPiece:
+                            tex.Path = $"N:\\FDP\\data\\Model\\map\\m{op.PortedId[..2]}\\tex\\" + texName;
+                            break;
+                    }
+                    
+                }
+                else if (associatedTextures != null)
+                {
+                    tex.Path = GetDummyTexPath(associatedTextures, texInfo);
+                }
+                //FLVER2.Texture? matchingTex = oldMat.Textures.FirstOrDefault(x => x.ParamName.Equals(texType));
+                //if (matchingTex == null) continue;
+                //Match texContainer = Regex.Match(matchingTex.Path, "c[0-9]{4}", RegexOptions.IgnoreCase);
+                //if (!texContainer.Success) continue;
+                //tex.Path = $"N:\\FDP\\data\\Model\\chr\\c{op.PortedId}\\tex\\{Path.GetFileName(matchingTex.Path)}";
+                newMat.Textures.Add(tex);
+            }
         }
 
         return newMat;
+    }
+    
+    /// <summary>
+    /// Get the path to a dummy texture based on the texture type.
+    /// </summary>
+    private static string GetDummyTexPath(Dictionary<string,FLVER2.Texture> textureGroup, TextureInfo textureInfo)
+    {
+        if (textureGroup == textureInfo.AlbedoTextures)
+        {	
+            return "";
+        }
+        
+        if (textureGroup == textureInfo.SpecularTextures)
+        {
+            return @"N:\SPRJ\data\Other\SysTex\SYSTEX_DummySpecular.tga";
+        }
+        
+        if (textureGroup == textureInfo.ShininessTextures)
+        {
+            return @"N:\SPRJ\data\Other\SysTex\SYSTEX_DummyShininess.tga";
+        }
+        
+        if (textureGroup == textureInfo.NormalTextures || textureGroup == textureInfo.DetailNormalTextures)
+        {
+            return @"N:\SPRJ\data\Other\SysTex\SYSTEX_DummyNormal.tga";
+        }
+        
+        if (textureGroup == textureInfo.ScatteringMaskTextures)
+        {
+            return @"N:\FDP\data\Other\SysTex\SYSTEX_DummyScatteringMask.tga";
+        }
+        
+        if (textureGroup == textureInfo.EmissiveTextures)
+        {
+            return @"N:\SPRJ\data\Other\SysTex\SYSTEX_DummyEmissive.tga";
+        }
+        
+        if (textureGroup == textureInfo.BloodMaskTextures || textureGroup == textureInfo.DisplacementTextures)
+        {
+            return @"N:\LiveTokyo\data\model\common\tex\dummy128.tga";
+        }
+        
+        return "";
     }
 
     /// <summary>
@@ -103,6 +188,123 @@ public static class FlverUtils
         return "";
     }
 
+    private static string GetBestFitMTD(FLVER2.Material oldMat, FLVER2 oldFlver, MatShaderInfoBank infoBank, TextureInfo texInfo, Options op)
+    {
+        int minTangentCount = 0;
+        bool hasBitangent = false;
+        int minColorCount = 0;
+        bool hasJoints = false;
+        int minUVCount = 0;
+        FLVER2.Mesh? matMesh = oldFlver.Meshes.FirstOrDefault(x => x.MaterialIndex == oldMat.Index);
+        if (matMesh != null)
+        {
+            foreach (FLVER2.VertexBuffer vb in matMesh.VertexBuffers)
+            {
+                foreach (FLVER.LayoutMember member in oldFlver.BufferLayouts[vb.LayoutIndex])
+                {
+                    switch (member.Semantic)
+                    {
+                        case FLVER.LayoutSemantic.Tangent:
+                            minTangentCount++;
+                            break;
+                        case FLVER.LayoutSemantic.Bitangent:
+                            hasBitangent = true;
+                            break;
+                        case FLVER.LayoutSemantic.VertexColor:
+                            minColorCount++;
+                            break;
+                        case FLVER.LayoutSemantic.BoneWeights:
+                        case FLVER.LayoutSemantic.BoneIndices:
+                            hasJoints = true;
+                            break;
+                        case FLVER.LayoutSemantic.UV:
+                            minUVCount++;
+                            break;
+                    }
+                }
+            }
+        }
+
+        //FLVER2.GXList? gxList;
+        //if (oldMat.GXIndex >= 0 && oldFlver.GXLists.Count > oldMat.GXIndex)
+        //{
+        //    gxList = oldFlver.GXLists[oldMat.GXIndex];
+        //}
+        
+        if (texInfo.Material == null)
+        {
+            Console.WriteLine();
+            return "";
+        }
+
+        MatShaderInfoBank.MaterialInfo? bestFitMat = null;
+
+        List<MatShaderInfoBank.MaterialInfo> narrowedMatInfos;
+        if (op.SourceBndsType == Options.AssetType.Character)
+        {
+            narrowedMatInfos = infoBank.MaterialInformation.Where(x => x.MatName.StartsWith("c", StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        else
+        {
+            narrowedMatInfos = infoBank.MaterialInformation.Where(x => x.MatName.StartsWith("m", StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        narrowedMatInfos = narrowedMatInfos.Where(texInfo.CheckIfMatDefIsValid).ToList();
+        narrowedMatInfos = narrowedMatInfos.Where(x => IsShaderBufferValid(x, infoBank, minTangentCount,
+            minColorCount, minUVCount, hasBitangent, hasJoints)).ToList();
+        if (narrowedMatInfos.Any())
+        {
+            bestFitMat = narrowedMatInfos.First();
+        }
+        
+        return bestFitMat != null ? bestFitMat.MatName : "";
+    }
+
+    private static bool IsShaderBufferValid(MatShaderInfoBank.MaterialInfo matInfo, MatShaderInfoBank infoBank,
+        int minTangentCount, int minColorCount, int minUVCount, bool hasBitangent, bool hasJoints)
+    {
+        MatShaderInfoBank.ShaderInfo? shaderInfo =
+            infoBank.ShaderInformation.FirstOrDefault(x => x.SpxName == matInfo.SpxName);
+        if (shaderInfo == null) return false;
+
+        int shaderTangentCount = 0;
+        int shaderColorCount = 0;
+        int shaderUVCount = 0;
+        bool shaderHasBitangent = false;
+        bool shaderHasJoints = false;
+        
+        foreach (MatShaderInfoBank.ShaderInfo.LayoutMember member in shaderInfo.VertexBufferLayout)
+        {
+            switch (member.Semantic)
+            {
+                case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.TANGENT:
+                    shaderTangentCount++;
+                    break;
+                case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.BINORMAL:
+                    shaderHasBitangent = true;
+                    break;
+                case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.COLOR:
+                    shaderColorCount++;
+                    break;
+                case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.BLENDWEIGHT:
+                case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.BLENDINDICES:
+                    shaderHasJoints = true;
+                    break;
+                case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.TEXCOORD:
+                    shaderUVCount++;
+                    break;
+            }
+        }
+        
+        if (shaderTangentCount < minTangentCount) return false;
+        if (shaderColorCount < minColorCount) return false;
+        //if (shaderUVCount < minUVCount) return false;
+        //if (shaderHasBitangent != hasBitangent) return false;
+        //if (shaderHasJoints != hasJoints) return false;
+        
+        return true;
+    }
+    
     /// <summary>
     /// Gets the closest DS3 equivalent of a c[arsn] mtd name that's not native to DS3.
     /// </summary>
@@ -125,6 +327,15 @@ public static class FlverUtils
         if ((extensions.Contains("_e") || extensions.Contains("_em")) && extensions.Contains("_em_e_Glow"))
         {
             extensions.Remove("_e");
+            extensions.Remove("_em");
+        }
+        
+        if (extensions.Contains("_em") && extensions.Contains("_Cloth"))
+        {
+            extensions.Remove("_em");
+            extensions.Remove("_Cloth");
+            extensions.Add("_em_e_Glow");
+            extensions.Add("_Cloth");
         }
 
         string newMtd = "C[ARSN]";
@@ -183,7 +394,7 @@ public static class FlverUtils
         foreach (FLVER.LayoutMember layoutMember in layoutMembers)
         {
             bool isDouble = layoutMember.Semantic == FLVER.LayoutSemantic.UV &&
-                            layoutMember.Type is FLVER.LayoutType.Float4 or FLVER.LayoutType.UVPair;
+                            layoutMember.Type is FLVER.LayoutType.Float4 or FLVER.LayoutType.Short4;
             int count = isDouble ? 2 : 1;
                 
             if (usageCounts.ContainsKey(layoutMember.Semantic))

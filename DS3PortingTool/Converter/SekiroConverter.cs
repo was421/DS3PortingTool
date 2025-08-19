@@ -1,5 +1,4 @@
 using DS3PortingTool.Util;
-using SoulsAssetPipeline.Animation;
 using SoulsFormats;
 
 namespace DS3PortingTool.Converter;
@@ -8,24 +7,24 @@ public class SekiroConverter : Converter
     /// <summary>
     /// Converts a Sekiro HKX file into a DS3 compatible HKX file.
     /// </summary>
-	protected override void ConvertCharacterHkx(BND4 newBnd, Options op)
+	protected override void ConvertCharacterHkx(IBinder sourceBnd, BND4 newBnd, Options op)
     {
-        if (op.CurrentSourceFileName.Contains("anibnd"))
+        if (op.CurrentTextureSourceFileName.Contains("anibnd"))
         {
-            BinderFile? compendium = op.CurrentSourceBnd.Files
+            BinderFile? compendium = sourceBnd.Files
                 .Find(x => x.Name.Contains($"c{op.SourceId}.compendium"));
             if (compendium == null)
             {
                 throw new FileNotFoundException("Source anibnd contains no compendium.");
             }
 			
-            newBnd.Files = op.CurrentSourceBnd.Files
+            newBnd.Files = sourceBnd.Files
                 .Where(x => Path.GetExtension(x.Name).ToLower().Equals(".hkx"))
                 .Where(x => PortHavok(x,$"{op.Cwd}HavokDowngrade\\", compendium)).ToList();
         }
         else
         {
-            newBnd.Files = op.CurrentSourceBnd.Files
+            newBnd.Files = sourceBnd.Files
                 .Where(x => Path.GetExtension(x.Name).ToLower().Equals(".hkx"))
                 .Where(x => PortHavok(x,$"{op.Cwd}HavokDowngrade\\")).ToList();
         }
@@ -65,11 +64,11 @@ public class SekiroConverter : Converter
     }
 
     // Need to figure this one out.
-    protected override void ConvertObjectHkx(BND4 newBnd, Options op, bool isInnerAnibnd)
+    protected override void ConvertObjectHkx(IBinder sourceBnd, BND4 newBnd, Options op, bool isInnerAnibnd)
     {
         if (isInnerAnibnd)
         {
-            BinderFile? anibndFile = op.CurrentSourceBnd.Files.FirstOrDefault(x => x.Name.EndsWith("anibnd"));
+            BinderFile? anibndFile = sourceBnd.Files.FirstOrDefault(x => x.Name.EndsWith("anibnd"));
             if (anibndFile != null)
             {
                 BND4 anibnd = BND4.Read(anibndFile.Bytes);
@@ -91,7 +90,7 @@ public class SekiroConverter : Converter
         }
         else
         {
-            newBnd.Files.AddRange(op.CurrentSourceBnd.Files
+            newBnd.Files.AddRange(sourceBnd.Files
                 .Where(x => Path.GetExtension(x.Name).ToLower().Equals(".hkx"))
                 .Where(x => PortHavok(x,$"{op.Cwd}HavokDowngrade\\")).ToList());
         }
@@ -101,7 +100,7 @@ public class SekiroConverter : Converter
             string path = $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId[..2]}\\o{op.PortedId}\\";
             string name = Path.GetFileName(hkx.Name).ToLower();
 
-            if (op.CurrentSourceFileName.Contains("_c", StringComparison.OrdinalIgnoreCase) && !isInnerAnibnd)
+            if (op.CurrentTextureSourceFileName.Contains("_c", StringComparison.OrdinalIgnoreCase) && !isInnerAnibnd)
             {
                 hkx.Name = $"{path}o{op.PortedId}_c.hkx";
             }
@@ -137,7 +136,7 @@ public class SekiroConverter : Converter
     /// <summary>
     /// Converts a Sekiro TAE file into a DS3 compatible TAE file.
     /// </summary>
-    protected override void ConvertCharacterTae(BND4 newBnd, BinderFile taeFile, Options op)
+    protected override void ConvertCharacterTae(IBinder sourceBnd, BND4 newBnd, BinderFile taeFile, Options op)
     {
         TAE oldTae = TAE.Read(taeFile.Bytes);
         TAE newTae = new()
@@ -160,7 +159,7 @@ public class SekiroConverter : Converter
 
         data.ExcludedAnimations.AddRange(oldTae.Animations.Where(x => 
             x.MiniHeader is TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: true } standardHeader && 
-            op.CurrentSourceBnd.Files.All(y => y.Name != "a00" + standardHeader.ImportHKXSourceAnimID.ToString("D3").GetOffset() +
+            sourceBnd.Files.All(y => y.Name != "a00" + standardHeader.ImportHKXSourceAnimID.ToString("D3").GetOffset() +
                 "_" + standardHeader.ImportHKXSourceAnimID.ToString("D9")[3..] + ".hkx"))
             .Select(x => Convert.ToInt32(x.ID)));
 
@@ -246,7 +245,7 @@ public class SekiroConverter : Converter
                 break;
             // SpawnFFX_100_BB
             case 100:
-                ev.Type = 96;
+                ev.ForceChangeType(96);
                 ev.Group.GroupType = 96;
                 paramBytes[13] = paramBytes[12];
                 paramBytes[12] = 0;

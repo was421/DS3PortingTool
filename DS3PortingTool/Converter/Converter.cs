@@ -1,56 +1,67 @@
 using System.Diagnostics;
+using System.Numerics;
+using System.Threading.Channels;
 using DS3PortingTool.Util;
-using SoulsAssetPipeline.Animation;
-using SoulsAssetPipeline.FLVERImporting;
+using FlverFixer;
+using FLVERMaterialHelper;
+using FLVERMaterialHelper.MatShaderInfoBank;
+using ImageMagick;
 using SoulsFormats;
 
 namespace DS3PortingTool.Converter;
 
 public abstract class Converter
 {
+    public List<HashSet<string>> UsedTextureGroups = new();
+    
+    public List<TPF.Texture> Textures = new();
+    public List<TPF.Texture> LODTextures = new();
+    
     /// <summary>
     /// Performs the steps necessary to convert a foreign binder into a DS3 compatible binder.
     /// </summary>
     public virtual void DoConversion(Options op)
     {
+        IBinder sourceBnd = (IBinder)op.CurrentTextureSourceFile;
+        
         BND4 newBnd = new();
-        if (op.CurrentSourceFileName.Contains("anibnd") && op.SourceBndsType == Options.AssetType.Character)
+        if (op.CurrentTextureSourceFileName.Contains("anibnd") && op.SourceBndsType == Options.AssetType.Character)
         {
             if (!op.PortTaeOnly)
             {
-                ConvertCharacterHkx(newBnd, op);
+                ConvertCharacterHkx(sourceBnd, newBnd, op);
             }
             
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.Contains(".tae"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".tae"));
             if (file != null)
             {
-                ConvertCharacterTae(newBnd, file, op);
+                ConvertCharacterTae(sourceBnd, newBnd, file, op);
             }
 
             if (op.PortTaeOnly) return;
             newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.anibnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.anibnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
-        else if (op.CurrentSourceFileName.Contains("chrbnd") && op.SourceBndsType == Options.AssetType.Character)
+        else if (op.CurrentTextureSourceFileName.Contains("chrbnd") && op.SourceBndsType == Options.AssetType.Character)
         {
             if (!op.PortFlverOnly)
             {
-                ConvertCharacterHkx(newBnd, op);
+                ConvertCharacterHkx(sourceBnd, newBnd, op);
 
                 if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}.hkx")))
                 {
-                    op.CurrentSourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",
+                    sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",
                         @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}.hkxpwv");
                 }
 
                 if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}_c.hkx")))
                 {
-                    op.CurrentSourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",
+                    sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",
                         @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}_c.clm2");
                 }
             }
 
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.Contains(".flver"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".flver"));
             if (file != null)
             {
                 ConvertFlver(newBnd, file, op);
@@ -58,23 +69,23 @@ public abstract class Converter
 
             if (op.PortFlverOnly) return;
             newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
-        else if (op.CurrentSourceFileName.Contains("objbnd") && op.SourceBndsType == Options.AssetType.Object)
+        else if (op.CurrentTextureSourceFileName.Contains("objbnd") && op.SourceBndsType == Options.AssetType.Object)
         {
             if (!op.PortTaeOnly && !op.PortFlverOnly)
             {
-                ConvertObjectHkx(newBnd, op, false);
+                ConvertObjectHkx(sourceBnd, newBnd, op, false);
 
                 if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"o{op.PortedId}_c.hkx")))
                 {
-                    op.CurrentSourceBnd.TransferBinderFile(newBnd, $"o{op.SourceId}_c.clm2",
+                    sourceBnd.TransferBinderFile(newBnd, $"o{op.SourceId}_c.clm2",
                         @"N:\FDP\data\INTERROOT_win64\obj\" +
                         $"o{op.PortedId[..2]}\\o{op.PortedId}\\o{op.PortedId}_c.clm2");
                 }
             }
 
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.EndsWith(".anibnd"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.EndsWith(".anibnd"));
             if (file != null && !op.PortFlverOnly)
             {
                 BND4 oldAnibnd = BND4.Read(file.Bytes);
@@ -82,7 +93,7 @@ public abstract class Converter
 
                 if (!op.PortTaeOnly)
                 {
-                    ConvertObjectHkx(newAnibnd, op, true);
+                    ConvertObjectHkx(sourceBnd, newAnibnd, op, true);
                 }
 
                 file = oldAnibnd.Files.Find(x => x.Name.Contains(".tae"));
@@ -102,7 +113,7 @@ public abstract class Converter
             }
 
             if (op.PortTaeOnly) return;
-            foreach (BinderFile flver in op.CurrentSourceBnd.Files
+            foreach (BinderFile flver in sourceBnd.Files
                          .Where(x => FLVER2.Is(x.Bytes) && !x.Name
                              .EndsWith("_S.flver", StringComparison.OrdinalIgnoreCase)))
             {
@@ -111,21 +122,21 @@ public abstract class Converter
             
             if (op.PortFlverOnly) return;
             newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-            newBnd.Write($"{op.Cwd}\\o{op.PortedId}.objbnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+            newBnd.Write($"{op.Cwd}\\o{op.PortedId}.objbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
     }
     /// <summary>
     /// Converts a foreign character HKX file into a DS3 compatible HKX file.
     /// </summary>
-    protected abstract void ConvertCharacterHkx(BND4 newBnd, Options op);
+    protected abstract void ConvertCharacterHkx(IBinder sourceBnd, BND4 newBnd, Options op);
     /// <summary>
     /// Converts a foreign object HKX file into a DS3 compatible HKX file.
     /// </summary>
-    protected abstract void ConvertObjectHkx(BND4 newBnd, Options op, bool isInnerAnibnd);
+    protected abstract void ConvertObjectHkx(IBinder sourceBnd, BND4 newBnd, Options op, bool isInnerAnibnd);
     /// <summary>
     /// Converts a foreign character TAE file into a DS3 compatible TAE file.
     /// </summary>
-    protected virtual void ConvertCharacterTae(BND4 newBnd, BinderFile taeFile, Options op)
+    protected virtual void ConvertCharacterTae(IBinder sourceBnd, BND4 newBnd, BinderFile taeFile, Options op)
     {
         TAE oldTae = TAE.Read(taeFile.Bytes);
         TAE newTae = new()
@@ -148,7 +159,7 @@ public abstract class Converter
 
         data.ExcludedAnimations.AddRange(oldTae.Animations.Where(x => 
                 x.MiniHeader is TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: true } standardHeader && 
-                op.CurrentSourceBnd.Files.All(y => y.Name != "a00" + standardHeader.ImportHKXSourceAnimID.ToString("D3").GetOffset() +
+                sourceBnd.Files.All(y => y.Name != "a00" + standardHeader.ImportHKXSourceAnimID.ToString("D3").GetOffset() +
                     "_" + standardHeader.ImportHKXSourceAnimID.ToString("D9")[3..] + ".hkx"))
             .Select(x => Convert.ToInt32(x.ID)));
 
@@ -268,8 +279,8 @@ public abstract class Converter
         FLVER2 oldFlver = FLVER2.Read(flverFile.Bytes);
         FLVER2 newFlver = CreateDs3Flver(oldFlver, data, op);
 
-        List<FLVER2.Material> distinctMaterials = newFlver.Materials.DistinctBy(x => x.MTD).ToList();
-        foreach (var distinctMat in distinctMaterials)
+        //List<FLVER2.Material> distinctMaterials = newFlver.Materials.DistinctBy(x => x.MTD).ToList();
+        /*foreach (FLVER2.Material distinctMat in distinctMaterials)
         {
             FLVER2.GXList gxList = new FLVER2.GXList();
             gxList.AddRange(data.MaterialInfoBank
@@ -279,24 +290,139 @@ public abstract class Converter
             {
                 newFlver.GXLists.Add(gxList);
             }
-        }
+        }*/
 
-        foreach (var mesh in newFlver.Meshes)
+        foreach (FLVER2.Mesh mesh in newFlver.Meshes)
         {
-            FLVER2MaterialInfoBank.MaterialDef matDef = data.MaterialInfoBank.MaterialDefs.Values
-                .First(x => x.MTD.Equals(
-                    $"{Path.GetFileName(newFlver.Materials[mesh.MaterialIndex].MTD).ToLower()}"));
+            FLVER2.Material mat = newFlver.Materials[mesh.MaterialIndex];
 
-            List<FLVER2.BufferLayout> bufferLayouts = matDef.AcceptableVertexBufferDeclarations[0].Buffers;
+            HashSet<string> usedTextures = new HashSet<string>();
+            
+            // Get used textures
+            foreach (FLVER2.Texture tex in mat.Textures)
+            {
+                if (tex.Path.Length == 0) continue;
+                usedTextures.Add(Path.GetFileNameWithoutExtension(tex.Path));
+            }
+            
+            UsedTextureGroups.Add(usedTextures);
+            
+            MatShaderInfoBank.MaterialInfo matInfo = data.MaterialInfoBank.MaterialInformation
+                .First(x => x.MatName == Path.GetFileName(mat.MTD.ToLower()));
+            MatShaderInfoBank.ShaderInfo shaderInfo = data.MaterialInfoBank.ShaderInformation
+                .First(x => x.SpxName == matInfo.SpxName);
+            
+            EXParam exParam = EXParam.GenerateForMaterial_DS3(mat, data.MaterialInfoBank);
+            if (exParam.Count > 0)
+            {
+                FLVER2.GXList newGXList = exParam.ExportToGXList_DS3();
+                FLVER2.GXList? identicalGXList = newFlver.GXLists.FirstOrDefault(x => GXListExtensions.Equals(x,newGXList));
+                if (identicalGXList != null)
+                {
+                    mat.GXIndex = newFlver.GXLists.IndexOf(identicalGXList);
+                }
+                else
+                {
+                    newFlver.GXLists.Add(newGXList);
+                    mat.GXIndex = newFlver.GXLists.Count - 1;
+                }
+            }
+            
+            
+            FLVER2.BufferLayout newLayout = new FLVER2.BufferLayout();
+            int uvCount = 0;
+            foreach (MatShaderInfoBank.ShaderInfo.LayoutMember member in shaderInfo.VertexBufferLayout)
+            {
+                FLVER.LayoutSemantic semantic;
+                switch (member.Semantic)
+                {
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.POSITION:
+                        semantic = FLVER.LayoutSemantic.Position;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.NORMAL:
+                        semantic = FLVER.LayoutSemantic.Normal;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.TANGENT:
+                        semantic = FLVER.LayoutSemantic.Tangent;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.BINORMAL:
+                        semantic = FLVER.LayoutSemantic.Bitangent;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.BLENDINDICES:
+                        semantic = FLVER.LayoutSemantic.BoneIndices;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.BLENDWEIGHT:
+                        semantic = FLVER.LayoutSemantic.BoneWeights;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.COLOR:
+                        semantic = FLVER.LayoutSemantic.VertexColor;
+                        break;
+                    case MatShaderInfoBank.ShaderInfo.LayoutSemanticType.TEXCOORD:
+                        semantic = FLVER.LayoutSemantic.UV;
+                        break;
+                    default:
+                        continue;
+                }
+                FLVER.LayoutType type;
+                switch (member.Type)
+                {
+                    case "float2":
+                        type = FLVER.LayoutType.Float2;
+                        break;
+                    case "float3":
+                        type = FLVER.LayoutType.Float3;
+                        break;
+                    case "float4":
+                        type = FLVER.LayoutType.UByte4Norm;
+                        break;
+                    case "int2":
+                        type = FLVER.LayoutType.Short2;
+                        break;
+                    case "int4":
+                        type = FLVER.LayoutType.Short4;
+                        break;
+                    case "uint":
+                        type = FLVER.LayoutType.UByte4;
+                        break;
+                    case "uint4":
+                        type = FLVER.LayoutType.UByte4;
+                        break;
+                    default:
+                        continue;
+                }
 
-            // DS3 does not keep track of bone indices in each mesh.
-            mesh.BoneIndices.Clear();
-			
-            mesh.Vertices = mesh.Vertices.Select(x => x.Pad(bufferLayouts)).ToList();
-            List<int> layoutIndices = newFlver.GetLayoutIndices(bufferLayouts);
-            mesh.VertexBuffers = layoutIndices.Select(x => new FLVER2.VertexBuffer(x)).ToList();
+                if (semantic == FLVER.LayoutSemantic.UV)
+                {
+                    if (type == FLVER.LayoutType.Short2 || type == FLVER.LayoutType.Float2)
+                    {
+                        uvCount++;
+                    }
+                    else
+                    {
+                        uvCount += 2;
+                    }
+                }
+                
+                newLayout.Add(new FLVER.LayoutMember(type, semantic, member.Index, 0, 0));
+            }
 
+            foreach (FLVER.Vertex v in mesh.Vertices)
+            {
+                int currentUVCount = v.UVs.Count;
+                for (int i = 0; i < uvCount - currentUVCount; i++)
+                {
+                    v.UVs.Add(new Vector3(0));
+                }
+            }
+
+            if (newFlver.BufferLayouts.All(x => !BufferLayoutExtensions.Equals(x, newLayout)))
+            {
+                newFlver.BufferLayouts.Add(newLayout);
+            }
+                
         }
+        
+        
 
         if (op.SourceBndsType == Options.AssetType.Character)
         {
@@ -318,6 +444,14 @@ public abstract class Converter
                     $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId.Substring(0, 2)}\\o{op.PortedId}\\o{op.PortedId}.flver",
                     newFlver.Write());
             }
+        }
+        else if (op.SourceBndsType == Options.AssetType.MapPiece)
+        {
+            string map = $"m{op.PortedId[..2]}_{op.PortedId[2..4]}_{op.PortedId[4..6]}_{op.PortedId[6..8]}";
+            string model = $"{map}_{op.PortedId[8..]}";
+            flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
+                $"N:\\FDP\\data\\INTERROOT_win64\\map\\{map}\\{model}\\Model\\{model}.flver",
+                newFlver.Write());
         }
         
         if (op.PortFlverOnly)
@@ -349,13 +483,17 @@ public abstract class Converter
                 Unk68 = sourceFlver.Header.Unk68
             },
             Dummies = sourceFlver.Dummies,
-            Materials = sourceFlver.Materials.Select(x => x.ToDummyDs3Material(data.MaterialInfoBank, op)).ToList(),
-            Bones = sourceFlver.Bones.Select(x =>
+            /*Materials = sourceFlver.Materials.Select(x => 
+                op.UseBestFitMaterials ? 
+                    x.ToDs3Material(sourceFlver, data.MaterialInfoBank, data.MatBins, op) :
+                    x.ToDummyDs3Material(data.MaterialInfoBank, op)
+                ).ToList(),*/
+            Nodes = sourceFlver.Nodes.Select(x =>
             {
-                // Unk3C should only be 0 or 1 in DS3.
-                if (x.Unk3C > 1)
+                // Flags should only be 0 or 1 in DS3.
+                if (x.Flags is not 0 or FLVER.Node.NodeFlags.Disabled)
                 {
-                    x.Unk3C = 0;
+                    x.Flags = 0;
                 }
 
                 return x;
@@ -363,7 +501,18 @@ public abstract class Converter
             Meshes = sourceFlver.Meshes
         };
 
-        if (op.SourceBndsType == Options.AssetType.Object)
+        foreach (FLVER2.Material sourceMaterial in sourceFlver.Materials)
+        {
+            TextureInfo textureInfo = new(sourceMaterial, data.MatBins);
+            
+            FLVER2.Material newMaterial = op.UseBestFitMaterials
+                ? sourceMaterial.ToDs3Material(textureInfo, sourceFlver, data.MaterialInfoBank, data.MatBins, op)
+                : sourceMaterial.ToDummyDs3Material(textureInfo, data.MaterialInfoBank, op);
+            
+            newFlver.Materials.Add(newMaterial);
+        }
+
+        if (op.SourceBndsType == Options.AssetType.Object || op.SourceBndsType == Options.AssetType.MapPiece)
         {
             BoundingBoxSolver.FixAllBoundingBoxes(newFlver);
         }
@@ -379,7 +528,7 @@ public abstract class Converter
         string hkxName = Path.GetFileName(hkxFile.Name);
         File.WriteAllBytes($"{toolsDirectory}\\{hkxName}", hkxFile.Bytes);
         string xmlName = Path.GetFileNameWithoutExtension(hkxFile.Name) + ".xml";
-		
+        
         // FileConvert
         bool result = RunProcess(toolsDirectory, "fileConvert.exe", 
             $"-x {toolsDirectory}\\{hkxName} {toolsDirectory}\\{xmlName}");
@@ -461,7 +610,7 @@ public abstract class Converter
         }
 		
         // Repack xml file
-        result = RunProcess(toolsDirectory,"hkxpackds3.exe",
+        result = RunProcess(toolsDirectory,"hkxpack-souls.exe",
             $"{toolsDirectory}\\{xmlName}"); 
         File.Delete($"{toolsDirectory}\\{xmlName}");
         if (result == false)
@@ -511,5 +660,137 @@ public abstract class Converter
         }
 
         return true;
+    }
+
+    protected virtual void WritePBRCorrectedDDS(HashSet<string> texGroup, Options op)
+    {
+        List<string> prunedTexGroup = texGroup.Where(x => Textures.Any(y => y.Name == x)).ToList();
+        
+        string[] albedoTex = prunedTexGroup.Where(x => x.EndsWith("a", StringComparison.OrdinalIgnoreCase)).ToArray();
+        string[] metallicTex = prunedTexGroup.Where(x => x.EndsWith("r", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+        if (albedoTex.Length == metallicTex.Length)
+        {
+            for (int i = 0; i < albedoTex.Length; i++)
+            {
+                TPF.Texture albedoTpfTex = Textures.First(x => x.Name == albedoTex[i]);
+                TPF.Texture metallicTpfTex = Textures.First(x => x.Name == metallicTex[i]);
+                byte[] albedoBytes = MagickImageFromTPFBytes(albedoTpfTex.Bytes, op).ToByteArray();
+                byte[] metallicBytes = MagickImageFromTPFBytes(metallicTpfTex.Bytes, op).ToByteArray();
+
+                albedoTpfTex.Bytes = ConvertAlbedoToSpecularPBR(new MagickImage(albedoBytes), new MagickImage(metallicBytes), op);
+                WriteDDSBytes(albedoTex[i], albedoTpfTex.Bytes, op);
+
+                metallicTpfTex.Bytes = ConvertMetallicToSpecularPBR(new MagickImage(albedoBytes), new MagickImage(metallicBytes), op);
+                WriteDDSBytes(metallicTex[i], metallicTpfTex.Bytes, op);
+            }
+        }
+        else
+        {
+            Console.WriteLine();
+        }
+        
+        Console.WriteLine();
+    }
+
+    public byte[] ConvertAlbedoToSpecularPBR(MagickImage albedoImage, MagickImage metallicImage, Options op)
+    {
+        MagickImage albedoFillLayer = new(MagickColors.Black, albedoImage.Width, albedoImage.Height);
+        albedoFillLayer.Format = MagickFormat.Dds;
+        metallicImage.Resize(albedoImage.Width, albedoImage.Height);
+        albedoFillLayer.Composite(metallicImage);
+        IPixelCollection<byte> albedoPixels = albedoImage.GetPixels();
+        IPixelCollection<byte> fillLayerPixels = albedoFillLayer.GetPixels();
+        for (int u = 0; u < albedoImage.Height; u++)
+        {
+            for (int v = 0; v < albedoImage.Width; v++)
+            {
+                IPixel<byte> albedoPixel = albedoPixels[u, v];
+                IPixel<byte> fillLayerPixel = fillLayerPixels[u, v];
+
+                for (uint w = 0; w < 3; w++)
+                {
+                    float multpart1 = fillLayerPixel.GetChannel(w);
+                    float multiplier = multpart1 / 255;
+                    albedoPixel.SetChannel(w, (byte)(albedoPixel.GetChannel(w) * multiplier));
+                }
+            }
+        }
+
+        return ReadWriteDDSBytes(albedoImage.ToByteArray(), op);
+    }
+
+    public byte[] ConvertMetallicToSpecularPBR(MagickImage albedoImage, MagickImage metallicImage, Options op)
+    {
+        albedoImage.Resize(metallicImage.Width, metallicImage.Height);
+                
+        MagickImage specularFillLayer = new(new MagickColor("#383838"), metallicImage.Width, metallicImage.Height);
+        specularFillLayer.Format = MagickFormat.Dds;
+        specularFillLayer.Composite(metallicImage);
+        specularFillLayer.Negate(Channels.RGB);
+                
+        IPixelCollection<byte> albedoPixels = albedoImage.GetPixels();
+        IPixelCollection<byte> fillLayerPixels = specularFillLayer.GetPixels();
+        for (int u = 0; u < albedoImage.Height; u++)
+        {
+            for (int v = 0; v < albedoImage.Width; v++)
+            {
+                IPixel<byte> albedoPixel = albedoPixels[u, v];
+                IPixel<byte> fillLayerPixel = fillLayerPixels[u, v];
+
+                for (uint w = 0; w < 3; w++)
+                {
+                    float multpart1 = fillLayerPixel.GetChannel(w);
+                    float multiplier = multpart1 / 255;
+                    albedoPixel.SetChannel(w, (byte)(albedoPixel.GetChannel(w) * multiplier));
+                }
+            }
+        }
+        
+        return ReadWriteDDSBytes(albedoImage.ToByteArray(), op);
+    }
+
+    public MagickImage MagickImageFromTPFBytes(byte[] bytes, Options op)
+    {
+        byte[] fixedBytes = ReadWriteDDSBytes(bytes, op); // re-read DDS to make compatible with image magick
+        MagickImage image = new MagickImage(fixedBytes);
+        return image;
+    }
+
+    public byte[] ReadWriteDDSBytes(byte[] bytes, Options op)
+    {
+        File.WriteAllBytes(op.Cwd + "temp.dds", bytes);
+        ProcessStartInfo psi = new()
+        {
+            FileName = "texconv.exe",
+        };
+        psi.Arguments = "-f BC1_UNORM -srgb -y temp.dds";
+        Process process = new Process()
+        {
+            StartInfo = psi
+        };
+        process.Start();
+        process.WaitForExit();
+        
+        bytes = File.ReadAllBytes(op.Cwd + "temp.dds");
+        File.Delete(op.Cwd + "temp.dds");
+        return bytes;
+    }
+
+    public void WriteDDSBytes(string outputName, byte[] bytes, Options op)
+    {
+        string ddsPath = op.Cwd + outputName + ".dds";
+        File.WriteAllBytes(ddsPath, bytes);
+        ProcessStartInfo psi = new()
+        {
+            FileName = "texconv.exe",
+        };
+        psi.Arguments = $"-f BC1_UNORM -srgb -y {ddsPath}";
+        Process process = new Process()
+        {
+            StartInfo = psi
+        };
+        process.Start();
+        process.WaitForExit();
     }
 }

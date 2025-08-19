@@ -1,5 +1,4 @@
 using DS3PortingTool.Util;
-using SoulsAssetPipeline.Animation;
 using SoulsFormats;
 
 namespace DS3PortingTool.Converter;
@@ -10,37 +9,39 @@ public class BloodborneConverter : Converter
     /// </summary>
     public override void DoConversion(Options op)
     {
+        BND4 sourceBnd = (BND4)op.CurrentTextureSourceFile;
+        
         BND4 newBnd = new();
-        if (op.CurrentSourceFileName.Contains("anibnd"))
+        if (op.CurrentTextureSourceFileName.Contains("anibnd"))
         {
             if (!op.PortTaeOnly)
             {
-                ConvertCharacterHkx(newBnd, op);
+                ConvertCharacterHkx(sourceBnd, newBnd, op);
             }
             
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.Contains(".tae"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".tae"));
             if (file != null)
             {
-                ConvertCharacterTae(newBnd, file, op);
+                ConvertCharacterTae(sourceBnd, newBnd, file, op);
             }
 
             if (!op.PortTaeOnly)
             {
                 newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-                newBnd.Write($"{op.Cwd}\\c{op.PortedId}.anibnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+                newBnd.Write($"{op.Cwd}\\c{op.PortedId}.anibnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
             }
         }
-        else if (op.CurrentSourceFileName.Contains("chrbnd"))
+        else if (op.CurrentTextureSourceFileName.Contains("chrbnd"))
         {
-            ConvertCharacterHkx(newBnd, op);
+            ConvertCharacterHkx(sourceBnd, newBnd, op);
 
             if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}.hkx")))
             {
-                op.CurrentSourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",  
+                sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",  
                     @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}.hkxpwv");
             }
 
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.Contains(".flver"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".flver"));
             if (file != null)
             {
                 ConvertFlver(newBnd, file, op);
@@ -49,23 +50,23 @@ public class BloodborneConverter : Converter
             // Convert tpfs into texbnd
 
             newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
     }
     /// <summary>
     /// Converts a Bloodborne HKX file into a DS3 compatible HKX file.
     /// </summary>
-	protected override void ConvertCharacterHkx(BND4 newBnd, Options op)
+	protected override void ConvertCharacterHkx(IBinder sourceBnd, BND4 newBnd, Options op)
     {
-        if (op.CurrentSourceFileName.Contains("anibnd"))
+        if (op.CurrentTextureSourceFileName.Contains("anibnd"))
         {
-            newBnd.Files = op.CurrentSourceBnd.Files
+            newBnd.Files = sourceBnd.Files
                 .Where(x => Path.GetExtension(x.Name).ToLower().Equals(".hkx") && x.Name.Contains("chr"))
                 .Where(x => PortHavok(x, $"{op.Cwd}HavokDowngrade\\")).ToList();
         }
-        else if (op.CurrentSourceFileName.Contains("chrbnd"))
+        else if (op.CurrentTextureSourceFileName.Contains("chrbnd"))
         {
-            newBnd.Files = op.CurrentSourceBnd.Files
+            newBnd.Files = sourceBnd.Files
                 .Where(x => Path.GetExtension(x.Name).ToLower().Equals(".hkx") && !Path.GetFileName(x.Name).ToLower().Contains("_c"))
                 .Where(x => PortHavokRagdoll(x, $"{op.Cwd}HavokDowngrade\\")).ToList();
         }
@@ -90,7 +91,7 @@ public class BloodborneConverter : Converter
         }
     }
 
-    protected override void ConvertObjectHkx(BND4 newBnd, Options op, bool isInnerAnibnd)
+    protected override void ConvertObjectHkx(IBinder sourceBnd, BND4 newBnd, Options op, bool isInnerAnibnd)
     {
         throw new NotImplementedException();
     }
@@ -114,13 +115,13 @@ public class BloodborneConverter : Converter
                 break;
             // SpawnFFX_108
             case 108:
-                ev.Type = 96;
+                ev.ForceChangeType(96);
                 ev.Group.GroupType = 96;
                 Array.Resize(ref paramBytes, 16);
                 break;
             // SpawnFFX_109
             case 109:
-                ev.Type = 96;
+                ev.ForceChangeType(96);
                 ev.Group.GroupType = 96;
                 Array.Resize(ref paramBytes, 16);
                 break;
@@ -201,13 +202,13 @@ public class BloodborneConverter : Converter
                 Unk68 = sourceFlver.Header.Unk68
             },
             Dummies = sourceFlver.Dummies,
-            Materials = sourceFlver.Materials.Select(x => x.ToDummyDs3Material(data.MaterialInfoBank, op)).ToList(),
-            Bones = sourceFlver.Bones.Select(x =>
+            //Materials = sourceFlver.Materials.Select(x => x.ToDummyDs3Material(data.MaterialInfoBank, op)).ToList(),
+            Nodes = sourceFlver.Nodes.Select(x =>
             {
-                // Unk3C should only be 0 or 1 in DS3.
-                if (x.Unk3C > 1)
+                // Flags should only be 0 or 1 in DS3.
+                if ((int)x.Flags > 1)
                 {
-                    x.Unk3C = 0;
+                    x.Flags = 0;
                 }
 
                 return x;
@@ -238,7 +239,7 @@ public class BloodborneConverter : Converter
         }
         
         // Repack havok file
-        result = RunProcess(toolsDirectory,"hkxpackds3.exe",
+        result = RunProcess(toolsDirectory,"hkxpack-souls.exe",
             $"{toolsDirectory}\\{xmlName}"); 
         File.Delete($"{toolsDirectory}\\{xmlName}");
         if (result == false)
@@ -286,7 +287,7 @@ public class BloodborneConverter : Converter
             $"{toolsDirectory}\\{xmlName}");
         
         // Repack havok file
-        result = RunProcess(toolsDirectory,"hkxpackds3.exe",
+        result = RunProcess(toolsDirectory,"hkxpack-souls.exe",
             $"{toolsDirectory}\\{xmlName}"); 
         File.Delete($"{toolsDirectory}\\{xmlName}");
         if (result == false)

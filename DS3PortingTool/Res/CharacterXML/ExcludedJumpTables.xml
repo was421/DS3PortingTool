@@ -17,7 +17,15 @@
     <itemList game="EldenRing">
         <item id="0"/>
         <item id="34"/>
-        <item id="129"/>
-        <item id="132"/>
+        <itemRange increment="1" repeat="25">
+            <item id="125"/>
+        </itemRange>
+    </itemList>
+    <itemList game="Nightrein">
+        <item id="0"/>
+        <item id="34"/>
+        <itemRange increment="1" repeat="25">
+            <item id="125"/>
+        </itemRange>
     </itemList>
 </excludedJumpTables>
