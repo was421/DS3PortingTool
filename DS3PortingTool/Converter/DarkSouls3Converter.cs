@@ -1,5 +1,4 @@
 using DS3PortingTool.Util;
-using SoulsAssetPipeline.Animation;
 using SoulsFormats;
 
 namespace DS3PortingTool.Converter;
@@ -11,60 +10,63 @@ public class DarkSouls3Converter : Converter
     /// </summary>
     public override void DoConversion(Options op)
     {
+        BND4 sourceBnd = (BND4)op.CurrentTextureSourceFile;
+        
         BND4 newBnd = new();
-        if (op.CurrentSourceFileName.Contains("anibnd"))
+        if (op.CurrentTextureSourceFileName.Contains("anibnd"))
         {
             if (!op.PortTaeOnly)
             {
-                ConvertCharacterHkx(newBnd, op);
+                ConvertCharacterHkx(sourceBnd, newBnd, op);
             }
             
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.Contains(".tae"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".tae"));
             if (file != null)
             {
-                ConvertCharacterTae(newBnd, file, op);
+                ConvertCharacterTae(sourceBnd, newBnd, file, op);
             }
 
             if (!op.PortTaeOnly)
             {
                 newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-                newBnd.Write($"{op.Cwd}\\c{op.PortedId}.anibnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+                newBnd.Write($"{op.Cwd}\\c{op.PortedId}.anibnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
             }
         }
-        else if (op.CurrentSourceFileName.Contains("chrbnd"))
+        else if (op.CurrentTextureSourceFileName.Contains("chrbnd"))
         {
-            ConvertCharacterHkx(newBnd, op);
+            ConvertCharacterHkx(sourceBnd, newBnd, op);
 
             if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}.hkx")))
             {
-                op.CurrentSourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",  
+                sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",  
                     @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}.hkxpwv");
             }
 		
             if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}_c.hkx")))
             {
-                op.CurrentSourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",  
+                sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",  
                     @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}_c.clm2");
             }
             
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.Contains(".flver"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".flver"));
             if (file != null)
             {
                 ConvertFlver(newBnd, file, op);
             }
 
             newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", DCX.Type.DCX_DFLT_10000_44_9);
+            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
-        else if (op.CurrentSourceFileName.Contains("objbnd"))
+        else if (op.CurrentTextureSourceFileName.Contains("objbnd"))
         {
-            BinderFile file1 = op.CurrentSourceBnd.Files.First(x => FLVER2.Is(x.Bytes));
+            BinderFile file1 = sourceBnd.Files.First(x => FLVER2.Is(x.Bytes));
             FLVER2 flver1 = FLVER2.Read(file1.Bytes);
-            BinderFile file2 = op.SourceBnds[Array.IndexOf(op.SourceBnds, op.CurrentSourceBnd) + 1].Files.First(x => FLVER2.Is(x.Bytes));
+            BinderFile file2 = (op.ContentSourceFiles[Array.IndexOf(op.ContentSourceFiles, op.CurrentTextureSourceFile) + 1] as BND4)
+                .Files.First(x => FLVER2.Is(x.Bytes));
             FLVER2 flver2 = FLVER2.Read(file2.Bytes);
             
             
-            BinderFile? file = op.CurrentSourceBnd.Files.Find(x => x.Name.EndsWith(".anibnd"));
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.EndsWith(".anibnd"));
             if (file != null)
             {
                 file = BND4.Read(file.Bytes).Files.Find(x => x.Name.Contains(".tae"));
@@ -76,9 +78,9 @@ public class DarkSouls3Converter : Converter
         }
     }
 
-    protected override void ConvertCharacterHkx(BND4 newBnd, Options op)
+    protected override void ConvertCharacterHkx(IBinder sourceBnd, BND4 newBnd, Options op)
     {
-        newBnd.Files = op.CurrentSourceBnd.Files
+        newBnd.Files = sourceBnd.Files
             .Where(x => x.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).ToList();
 
         foreach (BinderFile hkx in newBnd.Files)
@@ -97,7 +99,7 @@ public class DarkSouls3Converter : Converter
         }
     }
 
-    protected override void ConvertObjectHkx(BND4 newBnd, Options op, bool isInnerAnibnd)
+    protected override void ConvertObjectHkx(IBinder sourceBnd, BND4 newBnd, Options op, bool isInnerAnibnd)
     {
         throw new NotImplementedException();
     }
@@ -114,7 +116,7 @@ public class DarkSouls3Converter : Converter
     {
         FLVER2 newFlver = FLVER2.Read(flverFile.Bytes);
 
-        if (op.SourceFileNames.Any(x => x.Contains(".texbnd")))
+        if (op.ContentSourceFileNames.Any(x => x.Contains(".texbnd")))
         {
             foreach (FLVER2.Material mat in newFlver.Materials)
             {

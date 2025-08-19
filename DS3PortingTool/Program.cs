@@ -1,5 +1,4 @@
 using DS3PortingTool.Converter;
-using SoulsAssetPipeline.Animation;
 using SoulsFormats;
 
 namespace DS3PortingTool;
@@ -14,26 +13,34 @@ static class Program
 
 		switch (op.Game.Type)
 		{
-			//case Game.GameTypes.Bloodborne:
-			//	conv = new BloodborneConverter();
-			//	break;
-			case Game.GameTypes.DarkSouls3:
-				conv = new DarkSouls3Converter();
+			case Game.GameTypes.Bloodborne:
+				conv = new BloodborneConverter();
 				break;
-            case Game.GameTypes.Sekiro:
+			case Game.GameTypes.Sekiro:
 				conv = new SekiroConverter();
 				break;
 			case Game.GameTypes.EldenRing:
 				conv = new EldenRingConverter();
 				break;
+			case Game.GameTypes.Nightrein:
+				conv = new NightreinConverter();
+				break;
 			default:
 				throw new ArgumentException("The game this binder originates from is not supported.");
 		}
-
-		for (int i = 0; i < op.SourceBnds.Length; i++)
+		
+		for (int i = 0; i < op.ContentSourceFiles.Length; i++)
 		{
-			op.CurrentSourceFileName = op.SourceFileNames[i];
-			op.CurrentSourceBnd = op.SourceBnds[i];
+			op.CurrentContentSourceFileName = op.ContentSourceFileNames[i];
+			op.CurrentContentSourceFile = op.ContentSourceFiles[i];
+			
+			conv.DoConversion(op);
+		}
+		
+		for (int i = 0; i < op.TextureSourceFiles.Length; i++)
+		{
+			op.CurrentTextureSourceFileName = op.TextureSourceFileNames[i];
+			op.CurrentTextureSourceFile = op.TextureSourceFiles[i];
 			
 			conv.DoConversion(op);
 		}

@@ -1,10 +1,9 @@
-using System.Text.RegularExpressions;
 using DS3PortingTool.Util;
 using SoulsFormats;
 
 namespace DS3PortingTool.Converter;
 
-public class EldenRingConverter : Converter
+public class NightreinConverter : Converter
 {
     /// <summary>
     /// All tae and hkx from any source anibnds will be combined into this singular anibnd which will be converted.
@@ -15,208 +14,112 @@ public class EldenRingConverter : Converter
     /// Flver from geombnd and hkx from geomhkxbnd are stored in here.
     /// </summary>
     private BND4 _combinedObjbnd = new();
-
-    private readonly string _textureRegexPattern = @".+(?=_.+)";
     
     /// <summary>
     /// Performs the steps necessary to convert an Elden Ring binder into a DS3 compatible binder.
     /// </summary>
     public override void DoConversion(Options op)
     {
-        if (op.CurrentTextureSourceFile is TPF tpf)
+        BND4 sourceBnd = (BND4)op.CurrentTextureSourceFile;
+        
+        BND4 newBnd = new();
+        if (op.CurrentTextureSourceFileName.Contains("anibnd") && op.SourceBndsType == Options.AssetType.Character)
         {
-            foreach (TPF.Texture tex in tpf.Textures)
+            if (!op.PortTaeOnly)
             {
-                bool isLod = false;
-                string texName = tex.Name;
-                if (tex.Name.EndsWith("_l", StringComparison.OrdinalIgnoreCase))
-                {
-                    isLod = true;
-                    texName = texName[..^2];
-                    
-                    if (texName.EndsWith("m", StringComparison.OrdinalIgnoreCase))
-                    {
-                        char[] chars = tex.Name.ToCharArray();
-                        chars[^3] = 'r';
-                        tex.Name = new string(chars);
-                    }
-                }
-                else if (texName.EndsWith("m", StringComparison.OrdinalIgnoreCase))
-                {
-                    char[] chars = tex.Name.ToCharArray();
-                    chars[^1] = 'r';
-                    tex.Name = new string(chars);
-                }
-                
-                if (!isLod)
-                {
-                    Textures.Add(tex);
-                }
-                else
-                {
-                    LODTextures.Add(tex);
-                }
+                ConvertCharacterHkx(sourceBnd, newBnd, op);
+                _combinedAnibnd.Files.AddRange(newBnd.Files);
             }
             
-            Console.WriteLine($"Read TPF: {op.CurrentTextureSourceFileName}");
-            
-            string[] tpfNames = op.TextureSourceFileNames.Where(x => x.Contains(".tpf")).ToArray();
-            if (Array.IndexOf(tpfNames, op.CurrentTextureSourceFileName) == tpfNames.Length - 1)
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".tae"));
+            if (file != null)
             {
-                foreach (HashSet<string> texGroup in UsedTextureGroups)
-                {
-                    WritePBRCorrectedDDS(texGroup, op);
-                }
+                _combinedAnibnd.Files.Add(file);
+            }
+
+            string[] anibndNames = op.ContentSourceFileNames.Where(x => x.Contains(".anibnd")).ToArray();
+            if (Array.IndexOf(anibndNames, op.CurrentTextureSourceFileName) == anibndNames.Length - 1)
+            {
+                ConvertCombinedAnibnd(op);
             }
         }
-        else if (op.CurrentContentSourceFileName.Contains("texbnd"))
+        else if (op.CurrentTextureSourceFileName.Contains("chrbnd") && op.SourceBndsType == Options.AssetType.Character)
         {
-            BND4 sourceBnd = (BND4)op.CurrentTextureSourceFile;
-            
-            List<TPF.Texture> textures = new();
-            
-            foreach (TPF.Texture tex in sourceBnd.Files.SelectMany(x => TPF.Read(x.Bytes).Textures))
+            if (!op.PortFlverOnly)
             {
-                bool isLod = false;
-                string texName = tex.Name;
-                if (texName.EndsWith("m", StringComparison.OrdinalIgnoreCase))
+                ConvertCharacterHkx(sourceBnd, newBnd, op);
+
+                if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}.hkx")))
                 {
-                    char[] chars = tex.Name.ToCharArray();
-                    chars[^1] = 'r';
-                    tex.Name = new string(chars);
+                    sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",
+                        @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}.hkxpwv");
                 }
-                
-                textures.Add(tex);
-            }
-            
-            Console.WriteLine("Read textures from texbnd");
-            
-            string[] tpfNames = op.TextureSourceFileNames.Where(x => x.Contains(".tpf")).ToArray();
-            if (Array.IndexOf(tpfNames, op.CurrentTextureSourceFileName) == tpfNames.Length - 1)
-            {
-                foreach (HashSet<string> texGroup in UsedTextureGroups)
+
+                if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}_c.hkx")))
                 {
-                    WritePBRCorrectedDDS(texGroup, op);
+                    sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",
+                        @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}_c.clm2");
                 }
             }
+
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".flver"));
+            if (file != null)
+            {
+                ConvertFlver(newBnd, file, op);
+            }
+            
+            if (op.PortFlverOnly) return;
+
+            newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
+            newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
-        else
+        else if (op.CurrentTextureSourceFileName.Contains("geombnd") && op.SourceBndsType == Options.AssetType.Object)
         {
-            BND4 sourceBnd = (BND4)op.CurrentContentSourceFile;
-            
-            BND4 newBnd = new();
-            if (op.CurrentContentSourceFileName.Contains("anibnd") && op.SourceBndsType == Options.AssetType.Character)
+            BinderFile? file = sourceBnd.Files.Find(x => x.Name.EndsWith(".anibnd"));
+            if (file != null && !op.PortFlverOnly)
             {
                 if (!op.PortTaeOnly)
                 {
-                    ConvertCharacterHkx(sourceBnd, newBnd, op);
-                    _combinedAnibnd.Files.AddRange(newBnd.Files);
+                    ConvertObjectHkx(sourceBnd, newBnd, op, true);
                 }
-                
-                BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".tae"));
+
+                BND4 anibnd = BND4.Read(file.Bytes);
+                file = anibnd.Files.Find(x => x.Name.Contains(".tae"));
                 if (file != null)
                 {
-                    _combinedAnibnd.Files.Add(file);
+                    ConvertObjectTae(newBnd, file, op);
                 }
 
-                string[] anibndNames = op.ContentSourceFileNames.Where(x => x.Contains(".anibnd")).ToArray();
-                if (Array.IndexOf(anibndNames, op.CurrentContentSourceFileName) == anibndNames.Length - 1)
+                if (!op.PortTaeOnly)
                 {
-                    ConvertCombinedAnibnd(op);
+                    newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
+                    _combinedObjbnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 400,
+                        $"N:\\FDP\\data\\INTERROOT_win64\\obj\\" +
+                        $"o{op.PortedId[..2]}\\o{op.PortedId}\\o{op.PortedId}.anibnd",
+                        newBnd.Write()));
                 }
             }
-            else if (op.CurrentContentSourceFileName.Contains("chrbnd") && op.SourceBndsType == Options.AssetType.Character)
+
+            foreach (BinderFile flver in sourceBnd.Files.Where(x => FLVER2.Is(x.Bytes)))
             {
-                if (!op.PortFlverOnly)
-                {
-                    //ConvertCharacterHkx(newBnd, op);
-
-                    if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}.hkx")))
-                    {
-                        sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}.hkxpwv",
-                            @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}.hkxpwv");
-                    }
-
-                    if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}_c.hkx")))
-                    {
-                        sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",
-                            @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}_c.clm2");
-                    }
-                }
-
-                BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".flver"));
-                if (file != null)
-                {
-                    ConvertFlver(newBnd, file, op);
-                }
-                
-                if (op.PortFlverOnly) return;
-
-                newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-                newBnd.Write($"{op.Cwd}\\c{op.PortedId}.chrbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
+                ConvertFlver(_combinedObjbnd, flver, op);
             }
-            else if (op.CurrentContentSourceFileName.Contains("geombnd") && op.SourceBndsType == Options.AssetType.Object)
+
+            WriteCombinedObjbnd(op);
+        }
+        else if (op.CurrentTextureSourceFileName.Contains("geomhkxbnd") && op.SourceBndsType == Options.AssetType.Object)
+        {
+            if (op.PortTaeOnly || op.PortFlverOnly) return;
+            ConvertObjectHkx(sourceBnd, newBnd, op, false);
+            if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"o{op.PortedId}_c.hkx")))
             {
-                BinderFile? file = sourceBnd.Files.Find(x => x.Name.EndsWith(".anibnd"));
-                if (file != null && !op.PortFlverOnly)
-                {
-                    if (!op.PortTaeOnly)
-                    {
-                        ConvertObjectHkx(sourceBnd, newBnd, op, true);
-                    }
-
-                    BND4 anibnd = BND4.Read(file.Bytes);
-                    file = anibnd.Files.Find(x => x.Name.Contains(".tae"));
-                    if (file != null)
-                    {
-                        ConvertObjectTae(newBnd, file, op);
-                    }
-
-                    if (!op.PortTaeOnly)
-                    {
-                        newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-                        _combinedObjbnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 400,
-                            $"N:\\FDP\\data\\INTERROOT_win64\\obj\\" +
-                            $"o{op.PortedId[..2]}\\o{op.PortedId}\\o{op.PortedId}.anibnd",
-                            newBnd.Write()));
-                    }
-                }
-
-                foreach (BinderFile flver in sourceBnd.Files.Where(x => FLVER2.Is(x.Bytes)))
-                {
-                    ConvertFlver(_combinedObjbnd, flver, op);
-                }
-
-                WriteCombinedObjbnd(op);
+                sourceBnd.TransferBinderFile(newBnd, $"o{op.SourceId}_c.clm2",
+                    @"N:\FDP\data\INTERROOT_win64\obj\" +
+                    $"o{op.PortedId[..2]}\\o{op.PortedId}\\o{op.PortedId}_c.clm2");
             }
-            else if (op.CurrentContentSourceFileName.Contains("geomhkxbnd") && op.SourceBndsType == Options.AssetType.Object)
-            {
-                if (op.PortTaeOnly || op.PortFlverOnly) return;
-                ConvertObjectHkx(sourceBnd, newBnd, op, false);
-                if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"o{op.PortedId}_c.hkx")))
-                {
-                    sourceBnd.TransferBinderFile(newBnd, $"o{op.SourceId}_c.clm2",
-                        @"N:\FDP\data\INTERROOT_win64\obj\" +
-                        $"o{op.PortedId[..2]}\\o{op.PortedId}\\o{op.PortedId}_c.clm2");
-                }
 
-                _combinedObjbnd.Files.AddRange(newBnd.Files);
-                WriteCombinedObjbnd(op);
-            }
-            else if (op.CurrentContentSourceFileName.Contains("geombnd") && op.SourceBndsType == Options.AssetType.MapPiece)
-            {
-                foreach (BinderFile flver in sourceBnd.Files.Where(x => FLVER2.Is(x.Bytes)))
-                {
-                    ConvertFlver(newBnd, flver, op);
-                }
-
-                if (op.PortFlverOnly) return;
-
-                newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
-                newBnd.Write(
-                    $"{op.Cwd}\\m{op.PortedId[..2]}_{op.PortedId[2..4]}_{op.PortedId[4..6]}_{op.PortedId[6..8]}_{op.PortedId[8..]}.mapbnd.dcx", 
-                    new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
-            }
+            _combinedObjbnd.Files.AddRange(newBnd.Files);
+            WriteCombinedObjbnd(op);
         }
     }
 
@@ -250,7 +153,7 @@ public class EldenRingConverter : Converter
         if (op.PortTaeOnly || op.PortFlverOnly) return;
         
         string[] geombndNames = op.ContentSourceFileNames.Where(x => x.Contains(".geombnd") || x.Contains(".geomhkxbnd")).ToArray();
-        if (Array.IndexOf(geombndNames, op.CurrentContentSourceFileName) == geombndNames.Length - 1)
+        if (Array.IndexOf(geombndNames, op.CurrentTextureSourceFileName) == geombndNames.Length - 1)
         {
             _combinedObjbnd.Files = _combinedObjbnd.Files.OrderBy(x => x.ID).ToList();
             _combinedObjbnd.Write($"{op.Cwd}\\o{op.PortedId}.objbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
@@ -262,7 +165,7 @@ public class EldenRingConverter : Converter
     /// </summary>
 	protected override void ConvertCharacterHkx(IBinder sourceBnd, BND4 newBnd, Options op)
     {
-        if (op.CurrentContentSourceFileName.Contains("anibnd"))
+        if (op.CurrentTextureSourceFileName.Contains("anibnd"))
         {
             BinderFile? compendium = sourceBnd.Files
                 .Find(x => x.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase));
@@ -308,7 +211,7 @@ public class EldenRingConverter : Converter
     /// </summary>
     protected override void ConvertObjectHkx(IBinder sourceBnd, BND4 newBnd, Options op, bool isInnerAnibnd)
     {
-        if (op.CurrentContentSourceFileName.Contains("geombnd"))
+        if (op.CurrentTextureSourceFileName.Contains("geombnd"))
         {
             BinderFile? anibndFile = sourceBnd.Files.FirstOrDefault(x => x.Name.EndsWith("anibnd"));
             if (anibndFile != null)
@@ -336,11 +239,11 @@ public class EldenRingConverter : Converter
             string path = $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId[..2]}\\o{op.PortedId}\\";
             string name = Path.GetFileName(hkx.Name).ToLower();
 
-            if (op.CurrentContentSourceFileName.Contains("_c", StringComparison.OrdinalIgnoreCase))
+            if (op.CurrentTextureSourceFileName.Contains("_c", StringComparison.OrdinalIgnoreCase))
             {
                 hkx.Name = $"{path}o{op.PortedId}_c.hkx";
             }
-            else if (op.CurrentContentSourceFileName.Contains("geomhkxbnd"))
+            else if (op.CurrentTextureSourceFileName.Contains("geomhkxbnd"))
             {
                 hkx.Name = name.Contains("_1") ? $"{path}o{op.PortedId}_1.hkx" : $"{path}o{op.PortedId}.hkx";
             }

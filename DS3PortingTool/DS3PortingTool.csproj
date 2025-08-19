@@ -2,13 +2,14 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <ApplicationIcon>Assets\DS3PortingTool-logo.ico</ApplicationIcon>
         <Authors>GompDS</Authors>
         <Version>1.3.4</Version>
         <PackageProjectUrl>https://github.com/GompDS/DS3PortingTool</PackageProjectUrl>
+        <LangVersion>10</LangVersion>
+        <TargetFramework>net8.0</TargetFramework>
     </PropertyGroup>
 
     <ItemGroup>
@@ -21,13 +22,96 @@
     </ItemGroup>
     
     <ItemGroup>
-        <CopyRes Include="Res\**\*" />
         <CopyHavokDowngrade Include="HavokDowngrade\**\**\*" />
     </ItemGroup>
+    
+    <ItemGroup>
+      <None Remove="Res\CharacterXML\AllowedSpEffects.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\AllowedSpEffects.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\CharacterXML\AnimationRemapping.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\AnimationRemapping.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\CharacterXML\ExcludedAnimations.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\ExcludedAnimations.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\CharacterXML\ExcludedEvents.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\ExcludedEvents.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\CharacterXML\ExcludedJumpTables.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\ExcludedJumpTables.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\CharacterXML\ExcludedRumbleCams.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\ExcludedRumbleCams.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\CharacterXML\SpEffectRemapping.xml" />
+      <AdditionalFiles Include="Res\CharacterXML\SpEffectRemapping.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\ObjectXML\ExcludedEvents.xml" />
+      <AdditionalFiles Include="Res\MATBIN\EldenRing\allmaterial.matbinbnd.dcx">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <AdditionalFiles Include="Res\MATBIN\EldenRing\allmaterial_dlc01.matbinbnd.dcx">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <AdditionalFiles Include="Res\MATBIN\EldenRing\allmaterial_dlc02.matbinbnd.dcx">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <AdditionalFiles Include="Res\MATBIN\EldenRing\speedtree.matbinbnd.dcx">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <AdditionalFiles Include="Res\ObjectXML\ExcludedEvents.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\ObjectXML\ExcludedJumpTables.xml" />
+      <AdditionalFiles Include="Res\ObjectXML\ExcludedJumpTables.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\ObjectXML\ExcludedRumbleCams.xml" />
+      <AdditionalFiles Include="Res\ObjectXML\ExcludedRumbleCams.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\BankDS3.xml" />
+      <AdditionalFiles Include="Res\BankDS3.xml">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\MatShaderInfoBank_ds3.xml" />
+      <AdditionalFiles Include="Res\MatShaderInfoBank_ds3.xml">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="Res\allmaterial.matbinbnd.dcx" />
+      <None Remove="Res\allmaterial_dlc01.matbinbnd.dcx" />
+      <None Remove="Res\allmaterial_dlc02.matbinbnd.dcx" />
+      <None Remove="Res\speedtree.matbinbnd.dcx" />
+      <None Remove="texconv.exe" />
+      <AdditionalFiles Include="texconv.exe">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+    </ItemGroup>
+    
+    <ItemGroup>
+      <ProjectReference Include="..\..\SoulsFormats\SoulsAssetPipeline\SoulsAssetPipeline.csproj" />
+      <ProjectReference Include="..\FLVERMaterialHelper\FLVERMaterialHelper\FLVERMaterialHelper.csproj" />
+      <ProjectReference Include="..\SoulsFormatsNEXT\SoulsFormats\SoulsFormats.csproj" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <Folder Include="Res\MATBIN\" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.8.0" />
+      <PackageReference Include="Magick.NET.Core" Version="14.8.0" />
+    </ItemGroup>
 
-    <Target Name="CopyRes" AfterTargets="AfterBuild">
-        <Copy SourceFiles="@(CopyRes)" DestinationFolder="bin\Release\net6.0\Res\%(RecursiveDir)" />
-        <Copy SourceFiles="@(CopyRes)" DestinationFolder="bin\Debug\net6.0\Res\%(RecursiveDir)" />
+    <Target Name="CopyHavokDowngrade" AfterTargets="AfterBuild">
         <Copy SourceFiles="@(CopyHavokDowngrade)" DestinationFolder="bin\Debug\net6.0\HavokDowngrade\%(RecursiveDir)" />
     </Target>
     

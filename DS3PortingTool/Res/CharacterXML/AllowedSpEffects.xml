@@ -8,4 +8,7 @@
     <itemList game="EldenRing">
         <item id="31"/>
     </itemList>
+    <itemList game="Nightrein">
+        <item id="31"/>
+    </itemList>
 </AllowedSpEffects>
