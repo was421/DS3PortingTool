@@ -43,6 +43,10 @@ public class Options
     /// <summary>
     /// The id of the source binder.
     /// </summary>
+    public Game.GameTypes OutputGame { get; }
+    /// <summary>
+    /// define what game the output binder will be for.
+    /// </summary>
     public string SourceId { get; }
     /// <summary>
     /// The id of the ported binder.
@@ -218,6 +222,30 @@ public class Options
             else if (!args[i].Equals("-x"))
             {
                 throw new ArgumentException($"Unknown flag: {args[i]}");
+            }
+            else if (args[i].Equals("-ot"))
+            {
+                if (i + 1 < args.Length)
+                {
+                    var argument = args[i + 1].ToLower();
+                    switch (argument)
+                    {
+                        case "ds3":
+                        case "darksouls3":
+                            OutputGame = Game.GameTypes.DarkSouls3;
+                            break;
+                        case "sekiro":
+                        case "sek":
+                            OutputGame = Game.GameTypes.Sekiro;
+                            break;
+                        case "eldenring":
+                        case "er":
+                            OutputGame = Game.GameTypes.EldenRing;
+                            break;
+                        default:
+                            throw new ArgumentException($"Unknown output game type: {argument}");
+                    }
+                }
             }
         }
     }

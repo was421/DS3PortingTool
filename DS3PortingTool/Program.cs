@@ -17,7 +17,10 @@ static class Program
 			//case Game.GameTypes.Bloodborne:
 			//	conv = new BloodborneConverter();
 			//	break;
-			case Game.GameTypes.Sekiro:
+			case Game.GameTypes.DarkSouls3:
+				conv = new DarkSouls3Converter();
+				break;
+            case Game.GameTypes.Sekiro:
 				conv = new SekiroConverter();
 				break;
 			case Game.GameTypes.EldenRing:
