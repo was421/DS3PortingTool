@@ -335,10 +335,6 @@ public class Options
             {
                 UseBestFitMaterials = true;
             }
-            else if (!(args[i].Equals("-x") || args[i].Equals("-obj") || args[i].Equals("-map")))
-            {
-                throw new ArgumentException($"Unknown flag: {args[i]}");
-            }
             else if (args[i].Equals("-ot"))
             {
                 if (i + 1 < args.Length)
@@ -362,6 +358,10 @@ public class Options
                             throw new ArgumentException($"Unknown output game type: {argument}");
                     }
                 }
+            }
+            else if (!(args[i].Equals("-x") || args[i].Equals("-obj") || args[i].Equals("-map")))
+            {
+                throw new ArgumentException($"Unknown flag: {args[i]}");
             }
         }
     }
