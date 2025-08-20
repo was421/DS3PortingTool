@@ -115,7 +115,8 @@ public class Options
         SoundId = "";
         LockCamParamId = "";
         ExcludedAnimOffsets = new List<int>();
-        
+        OutputGame = Game.GameTypes.DarkSouls3;
+
         string[] contentSourceFiles = Array.FindAll(args, x => File.Exists(x) && 
                                                    Path.GetFileName(x).Contains("bnd.dcx") && !Path.GetFileName(x).Contains("texbnd.dcx"));
         
