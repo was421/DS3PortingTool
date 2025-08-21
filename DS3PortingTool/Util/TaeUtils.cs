@@ -245,7 +245,7 @@ public static class TaeUtils
 		{
 			foreach (int offsetId in op.ExcludedAnimOffsets.Where(x => x > 0))
 			{
-				int idMin = offsetId * op.Game.Offset, idMax = (offsetId + 1) * op.Game.Offset;
+				int idMin = offsetId * op.InputGame.Offset, idMax = (offsetId + 1) * op.InputGame.Offset;
 				excludedOffsetAnimations.AddRange(sourceTae.Animations.Where(y => 
 					y.ID >= idMin && y.ID < idMax).Select(y => Convert.ToInt32(y.ID)).ToList());
 			}
@@ -258,8 +258,8 @@ public static class TaeUtils
 					nextAllowedOffset++;
 				}
 
-				nextAllowedOffset *= op.Game.Offset;
-				foreach (var anim in sourceTae.Animations.Where(x => x.ID < op.Game.Offset))
+				nextAllowedOffset *= op.InputGame.Offset;
+				foreach (var anim in sourceTae.Animations.Where(x => x.ID < op.InputGame.Offset))
 				{
 					if (sourceTae.Animations.FindIndex(x => 
 						    x.ID == anim.ID + nextAllowedOffset) >= 0 || (anim.ID is >= 3000 and < 4000))

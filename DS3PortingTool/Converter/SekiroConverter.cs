@@ -4,6 +4,15 @@ using SoulsFormats;
 namespace DS3PortingTool.Converter;
 public class SekiroConverter : Converter
 {
+    public override void DoConversion(Options op)
+    {
+        BND4 inputBinder = (BND4)ReadSourceBinder(op.CurrentContentSourceFile, op);
+        IBinder outputBinder = op.InputGame.BinderVersion == Game.BinderVersionType.BND3 ? new BND3() : new BND4();
+        
+        PortRagdollAndCloth(inputBinder, outputBinder, op);
+        //PortAnimations(inputBinder, outputBinder, op);
+    }
+
     /// <summary>
     /// Converts a Sekiro HKX file into a DS3 compatible HKX file.
     /// </summary>

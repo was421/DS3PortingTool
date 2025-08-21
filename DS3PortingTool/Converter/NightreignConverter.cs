@@ -3,7 +3,7 @@ using SoulsFormats;
 
 namespace DS3PortingTool.Converter;
 
-public class NightreinConverter : Converter
+public class NightreignConverter : Converter
 {
     /// <summary>
     /// All tae and hkx from any source anibnds will be combined into this singular anibnd which will be converted.

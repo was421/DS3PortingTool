@@ -13,9 +13,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Reference Include="SoulsAssetPipeline">
-        <HintPath>Lib\SoulsAssetPipeline.dll</HintPath>
-      </Reference>
       <Reference Include="SoulsFormats">
         <HintPath>Lib\SoulsFormats.dll</HintPath>
       </Reference>
@@ -97,7 +94,6 @@
     </ItemGroup>
     
     <ItemGroup>
-      <ProjectReference Include="..\..\SoulsFormats\SoulsAssetPipeline\SoulsAssetPipeline.csproj" />
       <ProjectReference Include="..\FLVERMaterialHelper\FLVERMaterialHelper\FLVERMaterialHelper.csproj" />
       <ProjectReference Include="..\SoulsFormatsNEXT\SoulsFormats\SoulsFormats.csproj" />
     </ItemGroup>

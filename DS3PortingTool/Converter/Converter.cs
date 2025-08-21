@@ -17,8 +17,205 @@ public abstract class Converter
     public List<TPF.Texture> Textures = new();
     public List<TPF.Texture> LODTextures = new();
     
+    protected IBinder ReadSourceBinder(ISoulsFile file, Options op)
+    {
+        if (op.InputGame.BinderVersion == Game.BinderVersionType.BND3)
+        {
+            return file as BND3 ?? throw new InvalidCastException("Input binder was not of the expected version: BND3");
+        }
+        
+        if (op.InputGame.BinderVersion == Game.BinderVersionType.BND4)
+        {
+            return file as BND4 ?? throw new InvalidCastException("Input binder was not of the expected version: BND4");
+        }
+
+        return null;
+    }
+
+    protected void PortRagdollAndCloth(IBinder sourceBnd, IBinder newBnd, Options op)
+    {
+        string root = $"{op.OutputGame.BinderFileNameRoot}\\chr\\c{op.PortedId}\\";
+        
+        List<BinderFile> portedHavokFiles = sourceBnd.Files
+            .Where(x => x.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
+            .Where(x => PortHavok(x, op)).ToList();
+        for (int i = 0; i < portedHavokFiles.Count; i++)
+        {
+            BinderFile bf = portedHavokFiles[i];
+            string fileName = Path.GetFileName(bf.Name).ToLower();
+            string fileNameWoExt = Path.GetFileNameWithoutExtension(fileName);
+
+            bf.Name = $"{root}{fileName.Replace(op.SourceId, op.PortedId)}";
+            newBnd.Files.Add(bf);
+
+            if (fileName.EndsWith("_c.hkx"))
+            {
+                BinderFile? clm2 = sourceBnd.Files.FirstOrDefault(x =>
+                    x.Name.EndsWith($"{fileNameWoExt}.clm2", StringComparison.OrdinalIgnoreCase));
+                if (clm2 != null)
+                {
+                    clm2.Name = $"{root}{fileNameWoExt.Replace(op.SourceId, op.PortedId)}.clm2";
+                    newBnd.Files.Add(clm2);
+                }
+            }
+            else
+            {
+                BinderFile? hkxpwv = sourceBnd.Files.FirstOrDefault(x =>
+                    x.Name.EndsWith($"{fileNameWoExt}.hkxpwv", StringComparison.OrdinalIgnoreCase));
+                if (hkxpwv != null)
+                {
+                    hkxpwv.Name = $"{root}{fileNameWoExt.Replace(op.SourceId, op.PortedId)}.hkxpwv";
+                    newBnd.Files.Add(hkxpwv);
+                }
+            }
+        }
+    }
+    
+    protected void PortAnimations(IBinder sourceBnd, IBinder newBnd, Options op)
+    {
+        string root = $"{op.OutputGame.BinderFileNameRoot}\\chr\\c{op.PortedId}\\hkx\\";
+        
+        BinderFile? compendium = sourceBnd.Files
+            .FirstOrDefault(x => x.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase));
+        List<BinderFile> portedHavokFiles = sourceBnd.Files
+            .Where(x => x.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
+            .Where(x => PortHavok(x, op, compendium)).ToList();
+        foreach (BinderFile bf in portedHavokFiles)
+        {
+            string fileName = Path.GetFileName(bf.Name).ToLower();
+
+            if (fileName.Equals("skeleton.hkx"))
+            {
+                bf.Name = $"{root}{fileName}";
+                bf.ID = 1000000;
+            }
+            else
+            {
+                if (op.InputGame.Offset == op.OutputGame.Offset)
+                {
+                    bf.Name = $"{root}{fileName}";
+                }
+                else if (op.InputGame.Offset == 100000000 && op.OutputGame.Offset == 1000000)
+                {
+                    int offset = fileName[1..].GetOffset();
+                
+                    if (offset > 0)
+                    {
+                        string offsetStr = fileName.Substring(1, 3);
+                        char[] offsetArray = offsetStr.ToCharArray();
+                        Array.Reverse(offsetArray);
+                        bf.Name = $"{root}a00{offset}{fileName[4..]}";
+                    }
+                    else
+                    {
+                        bf.Name = $"{root}{fileName}";
+                    }
+                    
+                    bf.ID = int.Parse($"100{bf.ID.ToString("D9")[1..].Remove(1, 2)}");
+                }
+                else if (op.InputGame.Offset == 1000000 && op.OutputGame.Offset == 100000000)
+                {
+                    int offset = fileName[1..].GetOffset();
+                
+                    if (offset > 0)
+                    {
+                        string offsetStr = fileName.Substring(1, 3);
+                        char[] offsetArray = offsetStr.ToCharArray();
+                        Array.Reverse(offsetArray);
+                        bf.Name = $"{root}a{offset}00{fileName[4..]}";
+                    }
+                    else
+                    {
+                        bf.Name = $"{root}{fileName}";
+                    }
+                    bf.ID = int.Parse($"1{bf.ID.ToString("D9")[3..].Insert(1, "00")}");
+                }
+            }
+        }
+        
+        newBnd.Files.AddRange(portedHavokFiles);
+    }
+    
+    protected bool PortHavok(BinderFile havokFile, Options op, BinderFile? compendiumFile = null)
+    {
+        if (op.InputGame.HavokVersion is Game.HavokVersionType.PC_2016 or Game.HavokVersionType.PC_2018 &&
+            op.OutputGame.HavokVersion == Game.HavokVersionType.PC_2014)
+        {
+            return PortHavok_PC20162018ToPC2014(havokFile, op, compendiumFile);
+        }
+        
+        return false;
+    }
+    
+    protected bool PortHavok_PC20162018ToPC2014(BinderFile havokFile, Options op, BinderFile? compendiumFile = null)
+    {
+        string toolsDirectory = $"{op.Cwd}HavokDowngrade\\";
+        
+        // Copy compendium
+        string? compendiumPath = null;
+        if (compendiumFile != null)
+        {
+            compendiumPath = $"{toolsDirectory}\\" + Path.GetFileName(compendiumFile.Name);
+            File.WriteAllBytes(compendiumPath, compendiumFile.Bytes);
+        }
+		
+        string hkxName = Path.GetFileName(havokFile.Name);
+        File.WriteAllBytes($"{toolsDirectory}\\{hkxName}", havokFile.Bytes);
+        string xmlName = Path.GetFileNameWithoutExtension(havokFile.Name) + ".xml";
+		
+        // FileConvert
+        bool result;
+        if (compendiumPath != null)
+        {
+            result = RunProcess(toolsDirectory,"fileConvert.exe", 
+                $"-x --compendium {compendiumPath} {toolsDirectory}\\{hkxName} {toolsDirectory}\\{xmlName}");
+        }
+        else
+        {
+            result = RunProcess(toolsDirectory, "fileConvert.exe", 
+                $"-x {toolsDirectory}\\{hkxName} {toolsDirectory}\\{xmlName}");
+        }
+        File.Delete($"{toolsDirectory}\\{hkxName}");
+        if (result == false)
+        {
+            Console.WriteLine($"Could not port {hkxName}");
+            return false;
+        }
+		
+        // DS3HavokConverter
+        result = RunProcess(toolsDirectory,"DS3HavokConverter.exe", 
+            $"{toolsDirectory}\\{xmlName}");
+        if (File.Exists($"{toolsDirectory}\\{xmlName}.bak"))
+        {
+            File.Delete($"{toolsDirectory}\\{xmlName}.bak");
+        }
+		
+        if (result == false)
+        { 
+            File.Delete($"{toolsDirectory}\\{xmlName}");
+            Console.WriteLine($"Could not port {hkxName}");
+            return false;
+        }
+		
+        // Repack xml file
+        result = RunProcess(toolsDirectory,"hkxpack-souls.exe",
+            $"{toolsDirectory}\\{xmlName}"); 
+        File.Delete($"{toolsDirectory}\\{xmlName}");
+        if (result == false)
+        {
+            Console.WriteLine($"Could not port {hkxName}");
+            return false;
+        }
+
+        havokFile.Bytes = File.ReadAllBytes($"{toolsDirectory}\\{hkxName}");
+        File.Delete($"{toolsDirectory}\\{hkxName}");
+        if (compendiumPath != null) File.Delete(compendiumPath);
+        Console.WriteLine($"Downgraded {hkxName}");
+        return true;
+    }
+
     /// <summary>
-    /// Performs the steps necessary to convert a foreign binder into a DS3 compatible binder.
+    /// Performs the steps necessary to convert a foreign binder into a output game compatible binder.
     /// </summary>
     public virtual void DoConversion(Options op)
     {
@@ -124,6 +321,11 @@ public abstract class Converter
             newBnd.Files = newBnd.Files.OrderBy(x => x.ID).ToList();
             newBnd.Write($"{op.Cwd}\\o{op.PortedId}.objbnd.dcx", new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
         }
+    }
+
+    protected virtual void ConvertTo_ER(Options op)
+    {
+        throw new NotImplementedException();
     }
     /// <summary>
     /// Converts a foreign character HKX file into a DS3 compatible HKX file.
@@ -279,40 +481,88 @@ public abstract class Converter
         FLVER2 oldFlver = FLVER2.Read(flverFile.Bytes);
         FLVER2 newFlver = CreateDs3Flver(oldFlver, data, op);
 
-        //List<FLVER2.Material> distinctMaterials = newFlver.Materials.DistinctBy(x => x.MTD).ToList();
-        /*foreach (FLVER2.Material distinctMat in distinctMaterials)
-        {
-            FLVER2.GXList gxList = new FLVER2.GXList();
-            gxList.AddRange(data.MaterialInfoBank
-                .GetDefaultGXItemsForMTD(Path.GetFileName(distinctMat.MTD).ToLower()));
-
-            if (newFlver.IsNewGxList(gxList))
-            {
-                newFlver.GXLists.Add(gxList);
-            }
-        }*/
-
         foreach (FLVER2.Mesh mesh in newFlver.Meshes)
         {
             FLVER2.Material mat = newFlver.Materials[mesh.MaterialIndex];
 
             HashSet<string> usedTextures = new HashSet<string>();
-            
+
             // Get used textures
             foreach (FLVER2.Texture tex in mat.Textures)
             {
                 if (tex.Path.Length == 0) continue;
                 usedTextures.Add(Path.GetFileNameWithoutExtension(tex.Path));
             }
-            
+
             UsedTextureGroups.Add(usedTextures);
+        }
+
+        ApplyMatShaderInfoBank(newFlver, (MatShaderInfoBankDS3)data.MaterialInfoBank);
+
+        if (op.OutputGame.Type == Game.GameTypes.DarkSouls3)
+        {
+            if (op.SourceBndsType == Options.AssetType.Character)
+            {
+                flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
+                    $"N:\\FDP\\data\\INTERROOT_win64\\chr\\c{op.PortedId}\\c{op.PortedId}.flver",
+                    newFlver.Write());
+            }
+            else if (op.SourceBndsType == Options.AssetType.Object)
+            {
+                if (flverFile.Name.EndsWith("_1.flver", StringComparison.OrdinalIgnoreCase))
+                {
+                    flverFile = new BinderFile(Binder.FileFlags.Flag1, 201,
+                        $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId.Substring(0, 2)}\\o{op.PortedId}\\o{op.PortedId}_1.flver",
+                        newFlver.Write());
+                }
+                else
+                {
+                    flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
+                        $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId.Substring(0, 2)}\\o{op.PortedId}\\o{op.PortedId}.flver",
+                        newFlver.Write());
+                }
+            }
+            else if (op.SourceBndsType == Options.AssetType.MapPiece)
+            {
+                string map = $"m{op.PortedId[..2]}_{op.PortedId[2..4]}_{op.PortedId[4..6]}_{op.PortedId[6..8]}";
+                string model = $"{map}_{op.PortedId[8..]}";
+                flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
+                    $"N:\\FDP\\data\\INTERROOT_win64\\map\\{map}\\{model}\\Model\\{model}.flver",
+                    newFlver.Write());
+            }
+        }
+        else if (op.OutputGame.Type == Game.GameTypes.EldenRing)
+        {
+            if (op.SourceBndsType == Options.AssetType.Character)
+            {
+                flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
+                    $"N:\\GR\\data\\INTERROOT_win64\\chr\\c{op.PortedId}\\c{op.PortedId}.flver",
+                    newFlver.Write());
+            }
+        }
+        
+        if (op.PortFlverOnly)
+        {
+            File.WriteAllBytes($"{op.Cwd}\\{Path.GetFileName(flverFile.Name)}", flverFile.Bytes);
+        }
+        else
+        {
+            newBnd.Files.Add(flverFile);
+        }
+    }
+
+    public void ApplyMatShaderInfoBank(FLVER2 newFlver, MatShaderInfoBankDS3 infoBank)
+    {
+        foreach (FLVER2.Mesh mesh in newFlver.Meshes)
+        {
+            FLVER2.Material mat = newFlver.Materials[mesh.MaterialIndex];
             
-            MatShaderInfoBank.MaterialInfo matInfo = data.MaterialInfoBank.MaterialInformation
+            MatShaderInfoBank.MaterialInfo matInfo = infoBank.MaterialInformation
                 .First(x => x.MatName == Path.GetFileName(mat.MTD.ToLower()));
-            MatShaderInfoBank.ShaderInfo shaderInfo = data.MaterialInfoBank.ShaderInformation
+            MatShaderInfoBank.ShaderInfo shaderInfo = infoBank.ShaderInformation
                 .First(x => x.SpxName == matInfo.SpxName);
             
-            EXParam exParam = EXParam.GenerateForMaterial_DS3(mat, data.MaterialInfoBank);
+            EXParam exParam = EXParam.GenerateForMaterial_DS3(mat, infoBank);
             if (exParam.Count > 0)
             {
                 FLVER2.GXList newGXList = exParam.ExportToGXList_DS3();
@@ -420,47 +670,6 @@ public abstract class Converter
                 newFlver.BufferLayouts.Add(newLayout);
             }
                 
-        }
-        
-        
-
-        if (op.SourceBndsType == Options.AssetType.Character)
-        {
-            flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
-                $"N:\\FDP\\data\\INTERROOT_win64\\chr\\c{op.PortedId}\\c{op.PortedId}.flver",
-                newFlver.Write());
-        }
-        else if (op.SourceBndsType == Options.AssetType.Object)
-        {
-            if (flverFile.Name.EndsWith("_1.flver", StringComparison.OrdinalIgnoreCase))
-            {
-                flverFile = new BinderFile(Binder.FileFlags.Flag1, 201,
-                    $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId.Substring(0, 2)}\\o{op.PortedId}\\o{op.PortedId}_1.flver",
-                    newFlver.Write());
-            }
-            else
-            {
-                flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
-                    $"N:\\FDP\\data\\INTERROOT_win64\\obj\\o{op.PortedId.Substring(0, 2)}\\o{op.PortedId}\\o{op.PortedId}.flver",
-                    newFlver.Write());
-            }
-        }
-        else if (op.SourceBndsType == Options.AssetType.MapPiece)
-        {
-            string map = $"m{op.PortedId[..2]}_{op.PortedId[2..4]}_{op.PortedId[4..6]}_{op.PortedId[6..8]}";
-            string model = $"{map}_{op.PortedId[8..]}";
-            flverFile = new BinderFile(Binder.FileFlags.Flag1, 200,
-                $"N:\\FDP\\data\\INTERROOT_win64\\map\\{map}\\{model}\\Model\\{model}.flver",
-                newFlver.Write());
-        }
-        
-        if (op.PortFlverOnly)
-        {
-            File.WriteAllBytes($"{op.Cwd}\\{Path.GetFileName(flverFile.Name)}", flverFile.Bytes);
-        }
-        else
-        {
-            newBnd.Files.Add(flverFile);
         }
     }
 

@@ -5,10 +5,18 @@ namespace DS3PortingTool.Converter;
 
 public class DarkSouls3Converter : Converter
 {
+    public override void DoConversion(Options op)
+    {
+        BND4 inputBinder = (BND4)ReadSourceBinder(op.CurrentContentSourceFile, op);
+        IBinder outputBinder = op.InputGame.BinderVersion == Game.BinderVersionType.BND3 ? new BND3() : new BND4();
+        
+        PortAnimations(inputBinder, outputBinder, op);
+    }
+    
     /// <summary>
     /// Performs the steps necessary to convert a DS3 binder into a new DS3 binder.
     /// </summary>
-    public override void DoConversion(Options op)
+    protected override void ConvertTo_ER(Options op)
     {
         BND4 sourceBnd = (BND4)op.CurrentTextureSourceFile;
         
@@ -34,7 +42,7 @@ public class DarkSouls3Converter : Converter
         }
         else if (op.CurrentTextureSourceFileName.Contains("chrbnd"))
         {
-            ConvertCharacterHkx(sourceBnd, newBnd, op);
+            /*ConvertCharacterHkx(sourceBnd, newBnd, op);
 
             if (newBnd.Files.Any(x => x.Name.ToLower().Contains($"c{op.PortedId}.hkx")))
             {
@@ -46,7 +54,7 @@ public class DarkSouls3Converter : Converter
             {
                 sourceBnd.TransferBinderFile(newBnd, $"c{op.SourceId}_c.clm2",  
                     @"N:\FDP\data\INTERROOT_win64\chr\" + $"c{op.PortedId}\\c{op.PortedId}_c.clm2");
-            }
+            }*/
             
             BinderFile? file = sourceBnd.Files.Find(x => x.Name.Contains(".flver"));
             if (file != null)

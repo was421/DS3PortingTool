@@ -44,7 +44,7 @@ public class XmlData
 
 	public XmlData(Options op)
 	{
-	    string gameName = op.Game.Name;
+	    string gameName = op.InputGame.Name;
 	    string? xmlDirectory;
 	    switch (op.SourceBndsType)
 	    {
@@ -71,7 +71,7 @@ public class XmlData
 	    ExcludedJumpTables = GetXmlSet(XElement.Load($"{xmlDirectory}ExcludedJumpTables.xml"), gameName);
 	    ExcludedRumbleCams = GetXmlSet(XElement.Load($"{xmlDirectory}ExcludedRumbleCams.xml"), gameName);
 
-	    if (op.Game.Type == Game.GameTypes.EldenRing)
+	    if (op.InputGame.Type == Game.GameTypes.EldenRing)
 	    {
 		    MatBins = new Dictionary<string, MATBIN>();
 		    

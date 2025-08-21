@@ -11,10 +11,13 @@ static class Program
 
 		Converter.Converter conv;
 
-		switch (op.Game.Type)
+		switch (op.InputGame.Type)
 		{
 			case Game.GameTypes.Bloodborne:
 				conv = new BloodborneConverter();
+				break;
+			case Game.GameTypes.DarkSouls3:
+				conv = new DarkSouls3Converter();
 				break;
 			case Game.GameTypes.Sekiro:
 				conv = new SekiroConverter();
@@ -22,8 +25,8 @@ static class Program
 			case Game.GameTypes.EldenRing:
 				conv = new EldenRingConverter();
 				break;
-			case Game.GameTypes.Nightrein:
-				conv = new NightreinConverter();
+			case Game.GameTypes.Nightreign:
+				conv = new NightreignConverter();
 				break;
 			default:
 				throw new ArgumentException("The game this binder originates from is not supported.");

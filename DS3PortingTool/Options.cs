@@ -1,4 +1,5 @@
 using System.Reflection.Metadata.Ecma335;
+using System.Text.RegularExpressions;
 using SoulsFormats;
 using ArgumentException = System.ArgumentException;
 
@@ -56,13 +57,13 @@ public class Options
     /// <summary>
     /// The game that the source binder comes from.
     /// </summary>
-    public Game Game { get; }
-    /// <summary>
-    /// The id of the source binder.
-    /// </summary>
-    public Game.GameTypes OutputGame { get; }
+    public Game InputGame { get; }
     /// <summary>
     /// define what game the output binder will be for.
+    /// </summary>
+    public Game OutputGame { get; }
+    /// /// <summary>
+    /// The id of the source binder.
     /// </summary>
     public string SourceId { get; }
     /// <summary>
@@ -135,8 +136,11 @@ public class Options
         
         TextureSourceFileNames = new string[textureSourceFiles.Length];
         TextureSourceFiles = new ISoulsFile[textureSourceFiles.Length];
-        CurrentTextureSourceFileName = TextureSourceFileNames[0];
-        CurrentTextureSourceFile = TextureSourceFiles[0];
+        if (textureSourceFiles.Length > 0)
+        {
+            CurrentTextureSourceFileName = TextureSourceFileNames[0];
+            CurrentTextureSourceFile = TextureSourceFiles[0];
+        }
         
 
         for (int i = 0; i < contentSourceFiles.Length; i++)
@@ -171,10 +175,10 @@ public class Options
             }
         }
         
-        Game = new((IBinder)ContentSourceFiles.First(x => x is BND3 or BND4));
+        InputGame = new((IBinder)ContentSourceFiles.First(x => x is BND3 or BND4));
 
         string[] args1 = args;
-        List<int> flagIndices = args.Where(x => x.Length == 2 && x.Substring(0, 1).Equals("-"))
+        List<int> flagIndices = args.Where(x => Regex.IsMatch(x, @"-\w+"))
             .Select(x => Array.IndexOf(args, x))
             .Where(x => contentSourceFiles.All(y => x != Array.IndexOf(args1, y))).ToList();
 		
@@ -185,7 +189,7 @@ public class Options
             if (flagString != null)
             {
                 string[] flagArgs = flagString.Split(" ");
-                flagIndices = flagArgs.Where(x => x.Length == 2 && x.Substring(0, 1).Equals("-"))
+                flagIndices = flagArgs.Where(x => Regex.IsMatch(x, @"-\w+"))
                     .Select(x => Array.IndexOf(flagArgs, x)).ToList();
                 args = flagArgs.Concat(args).ToArray();
             }
@@ -335,10 +339,6 @@ public class Options
             {
                 UseBestFitMaterials = true;
             }
-            else if (!(args[i].Equals("-x") || args[i].Equals("-obj") || args[i].Equals("-map")))
-            {
-                throw new ArgumentException($"Unknown flag: {args[i]}");
-            }
             else if (args[i].Equals("-ot"))
             {
                 if (i + 1 < args.Length)
@@ -346,22 +346,34 @@ public class Options
                     var argument = args[i + 1].ToLower();
                     switch (argument)
                     {
+                        case "bb":
+                        case "bloodborne":
+                            OutputGame = new Game(Game.GameTypes.Bloodborne);
+                            break;
                         case "ds3":
                         case "darksouls3":
-                            OutputGame = Game.GameTypes.DarkSouls3;
+                            OutputGame = new Game(Game.GameTypes.DarkSouls3);
                             break;
+                        case "sdt":
                         case "sekiro":
-                        case "sek":
-                            OutputGame = Game.GameTypes.Sekiro;
+                            OutputGame = new Game(Game.GameTypes.Sekiro);
                             break;
                         case "eldenring":
                         case "er":
-                            OutputGame = Game.GameTypes.EldenRing;
+                            OutputGame = new Game(Game.GameTypes.EldenRing);
+                            break;
+                        case "nightreign":
+                        case "nr":
+                            OutputGame = new Game(Game.GameTypes.Nightreign);
                             break;
                         default:
                             throw new ArgumentException($"Unknown output game type: {argument}");
                     }
                 }
+            }
+            else if (!(args[i].Equals("-x") || args[i].Equals("-obj") || args[i].Equals("-map")))
+            {
+                throw new ArgumentException($"Unknown flag: {args[i]}");
             }
         }
     }
