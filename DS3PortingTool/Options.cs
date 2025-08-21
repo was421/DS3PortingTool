@@ -116,7 +116,7 @@ public class Options
         SoundId = "";
         LockCamParamId = "";
         ExcludedAnimOffsets = new List<int>();
-        OutputGame = Game.GameTypes.DarkSouls3;
+        OutputGame = new Game(Game.GameTypes.DarkSouls3);
 
         string[] contentSourceFiles = Array.FindAll(args, x => File.Exists(x) && 
                                                    Path.GetFileName(x).Contains("bnd.dcx") && !Path.GetFileName(x).Contains("texbnd.dcx"));
@@ -339,30 +339,6 @@ public class Options
             else if (args[i].Equals("-m"))
             {
                 UseBestFitMaterials = true;
-            }
-            else if (args[i].Equals("-ot"))
-            {
-                if (i + 1 < args.Length)
-                {
-                    var argument = args[i + 1].ToLower();
-                    switch (argument)
-                    {
-                        case "ds3":
-                        case "darksouls3":
-                            OutputGame = Game.GameTypes.DarkSouls3;
-                            break;
-                        case "sekiro":
-                        case "sek":
-                            OutputGame = Game.GameTypes.Sekiro;
-                            break;
-                        case "eldenring":
-                        case "er":
-                            OutputGame = Game.GameTypes.EldenRing;
-                            break;
-                        default:
-                            throw new ArgumentException($"Unknown output game type: {argument}");
-                    }
-                }
             }
             else if (args[i].Equals("-ot"))
             {
